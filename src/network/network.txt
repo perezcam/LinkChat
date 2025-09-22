@@ -1,0 +1,3 @@
+Contendrá todo lo relacionado con la red a nivel de capa de enlace, 
+como la configuración de la interfaz, la apertura de sockets crudos (raw sockets), 
+la definición del protocolo y el manejo de tramas.

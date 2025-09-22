@@ -1,0 +1,2 @@
+/utils: Funciones comunes y utilitarias como el logueo y otras funciones 
+que podrían ser reutilizadas en diferentes módulos.
