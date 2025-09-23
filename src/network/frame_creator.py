@@ -5,14 +5,14 @@ from enums.formats import EtherHeaderFormat, HeaderFormat
 
 
 
-def create_header(message_type: MessageType, sequence: int, payload_len: int, ether_type: int):
+def _create_header(message_type: MessageType, sequence: int, payload_len: int, ether_type: int):
 
     header_format = HeaderFormat.get_format()
     return struct.pack(header_format, message_type.value, sequence, payload_len, ether_type)
 
 
 def create_ethernet_frame(src_mac, dst_mac, payload, message_type: MessageType, sequence: int, ether_type: int):
-    header = create_header(
+    header = _create_header(
         message_type,
         sequence,
         len(payload),

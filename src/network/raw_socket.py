@@ -41,7 +41,7 @@ class SocketManager:
         
 
 
-    def close__socket(self):
+    def close_socket(self):
 
         if self._socket:
             self._socket.close()

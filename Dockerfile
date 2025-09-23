@@ -1,5 +1,5 @@
 # Usamos una imagen base de Python oficial
-FROM python:3.9-slim
+FROM python:3.14-rc-alpine
 
 # Instalar dependencias de sistema necesarias
 RUN apt-get update && apt-get install -y \

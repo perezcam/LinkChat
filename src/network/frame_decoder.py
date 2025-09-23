@@ -5,7 +5,7 @@ from enums.formats import HeaderFormat
 ETHER_TYPE = 0x88B5  #TODO: definir en archivo
 
 
-def decode_header(frame):
+def _decode_header(frame):
     
     header = frame[14:22]  
 
@@ -23,7 +23,7 @@ def decode_ethernet_frame(frame):
     dst_mac = ':'.join(format(x, '02x') for x in frame[:6]) 
     src_mac = ':'.join(format(x, '02x') for x in frame[6:12])
 
-    header_data = decode_header(frame)
+    header_data = _decode_header(frame)
 
     payload = frame[22:22 + header_data['payload_len']].decode('utf-8')
 
@@ -35,3 +35,5 @@ def decode_ethernet_frame(frame):
         'payload': payload
     }
 
+
+#TODO: Descartar aqui los que no sean de mi EtherTYpe??? o hacerlo en el pool de hilos?
