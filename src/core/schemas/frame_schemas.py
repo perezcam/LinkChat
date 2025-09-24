@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from src.network.enums.enums import MessageType
+from src.core.enums.enums import MessageType
 
 @dataclass(frozen=True)
 class HeaderSchema:
