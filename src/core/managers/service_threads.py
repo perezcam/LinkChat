@@ -4,11 +4,11 @@ import queue
 import threading
 import time
 from typing import Callable, Dict
-from raw_socket import SocketManager
-from src.network.enums.enums import MessageType
-from src.network.frame_decoder import decode_ethernet_frame
-from src.network.schemas.frame_schemas import FrameSchema
-from src.network.schemas.scheduled_task import ScheduledTask
+from src.core.managers.raw_socket import SocketManager
+from src.core.enums.enums import MessageType
+from src.core.helpers.frame_decoder import decode_ethernet_frame
+from src.core.schemas.frame_schemas import FrameSchema
+from src.core.schemas.scheduled_task import ScheduledTask
 
 class ThreadManager:
     """
