@@ -1,115 +1,116 @@
 
+import logging
 import queue
 import threading
 import time
-from typing import Callable
+from typing import Callable, Dict
 from raw_socket import SocketManager
 from src.network.enums.enums import MessageType
-from src.network.frame_creator import _create_header, create_ethernet_frame
 from src.network.frame_decoder import decode_ethernet_frame
+from src.network.schemas.frame_schemas import FrameSchema
+from src.network.schemas.scheduled_task import ScheduledTask
+
+class ThreadManager:
+    """
+    Orquesta los hilos de trabajo para la aplicación de chat.
+    Gestiona la recepción, el envío, el procesamiento de mensajes y las tareas periódicas.
+    """
+    def __init__(self, socket_manager: SocketManager):
+        self.socket_manager = socket_manager
+
+        self.incoming_queue: queue.Queue[FrameSchema] = queue.Queue()
+        self.outgoing_queue: queue.Queue[bytes] = queue.Queue()
+        self.shutdown_event = threading.Event()
+
+        self.message_handlers: Dict[MessageType, Callable[[FrameSchema], None]] = {
+            # TODO: Añade aquí los manejadores para transferencia de archivos, etc.
+            # O crea funciones que permitan agregar callables tanto al message handler como al scheduled_tasks
+        }
+        self.scheduled_tasks: list[ScheduledTask] = []
 
 
-class ServiceThreads: 
-    def __init__(self, sock: SocketManager, src_mac: str):
-        self.sock = sock
-        self.src_mac = src_mac
-        self.in_queue = queue.Queue(maxsize=1024)
-        self.out_queue = queue.Queue(maxsize=1024)
-        self.stop_evt = threading.Event()
-        self.handlers = {}
-        self.timers = {}
-        self.timer_periods = {}
+        self.receiver = threading.Thread(target=self._receiver_loop, name="receiver", daemon=True)
+        self.sender = threading.Thread(target=self._sender_loop, name="sender", daemon=True)
+        self.scheduler = threading.Thread(target=self._scheduler_loop, name="scheduler", daemon=True)
+        self.dispatcher = threading.Thread(target=self._dispatcher_loop, name="dispatcher", daemon=True)
 
-        self.rx_t = threading.Thread(target=self._rx_loop, name="rx", daemon=True)
-        self.tx_t = threading.Thread(target=self._tx_loop, name="tx", daemon=True)
-        self.tp_t = threading.Thread(target=self._timer_pump, name="timers", daemon=True)
-        self.dp_t = threading.Thread(target=self._dispatch_loop, name="dispatch", daemon=True)
+        self.threads = [self.receiver, self.sender, self.scheduler, self.dispatcher]
 
+
+    def _receiver_loop(self):
+        """Recibe mensajes y los pone en la incoming_queue."""
+        logging.info("[Receiver] Hilo iniciado.")
+        while not self.shutdown_event.is_set():
+            try:
+                frame_bytes = self.socket_manager.receive_raw_frame()
+                if frame_bytes:
+                    decoded_frame = decode_ethernet_frame(frame_bytes)
+                    self.incoming_queue.put(decoded_frame)
+            except Exception as e:
+                logging.error(f"[Receiver] Error: {e}")
+                time.sleep(1) # Evitar un bucle de error muy rápido
+
+    def _sender_loop(self):
+        """Despacha mensajes desde la outgoing_queue."""
+        logging.info("[Sender] Hilo iniciado.")
+        while not self.shutdown_event.is_set():
+            try:
+                frame_to_send = self.outgoing_queue.get(timeout=1)
+                self.socket_manager.send_raw_frame(frame_to_send)
+                self.outgoing_queue.task_done()
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logging.error(f"[Sender] Error: {e}")
+
+    def _scheduler_loop(self):
+        logging.info("[Scheduler] Hilo iniciado.")
+        
+        while not self.shutdown_event.is_set():
+            current_time = time.time()
+            
+            for task in self.scheduled_tasks:
+                if current_time - task.last_run >= task.interval:
+                    try:
+                        logging.info(f"[Scheduler] Ejecutando tarea periódica: {task.action.__name__}")
+                        task.action()
+                        
+                        task.last_run = current_time
+                    except Exception as e:
+                        logging.error(f"[Scheduler] Error ejecutando la tarea {task.action.__name__}: {e}")
+
+            # Espera un poco para no consumir 100% de CPU.
+            self.shutdown_event.wait(timeout=1)
+        
+
+    def _dispatcher_loop(self):
+        """Procesa mensajes de la incoming_queue."""
+        logging.info("[Dispatcher] Hilo iniciado.")
+        while not self.shutdown_event.is_set():
+            try:
+                received_frame = self.incoming_queue.get(timeout=1)
+                
+                handler = self.message_handlers.get(received_frame.header.message_type)
+                if handler:
+                    handler(received_frame)
+                else:
+                    logging.info(f"[Dispatcher] No se encontró manejador para el tipo de mensaje: {received_frame.header.message_type}")
+                
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logging.error(f"[Dispatcher] Error: {e}")
 
     def start(self):
-        self.sock.create_raw_socket()
-        self.rx_t.start()
-        self.tx_t.start()
-        self.tp_t.start()
-        self.dp_t.start()
+        for thread in self.threads:
+            thread.start()
 
     def stop(self):
-        self.stop_evt.set()
-        self.sock.close_socket()
+        self.shutdown_event.set()
 
-    def on(self, mtype: MessageType, handler: Callable[[InboundMessage], None]):
-        self.handlers[mtype] = handler
+        for thread in self.threads:
+            thread.join()
 
-    def every(self, name: str, period_sec: float, fn: Callable[[], None]):
-        self.timer_periods[name] = period_sec
-        self.timers[name] = fn
 
-    # --- Loops ---
-    def _rx_loop(self):
-        while not self.stop_evt.is_set():
-            try:
-                frame = self.sock.receive_raw_frame()
-                if frame:
-                    decoded = decode_ethernet_frame(frame)
-                    msg = InboundMessage(
-                        src_mac=decoded["src_mac"],
-                        dst_mac=decoded["dst_mac"],
-                        mtype=MessageType(decoded["message_type"]),
-                        seq=decoded["sequence"],
-                        payload=decoded["payload"]
-                    )
-                    self.in_queue.put(msg)
-            except Exception as e:
-                print(f"[rx] error: {e}")
-
-    def _tx_loop(self):
-        while not self.stop_evt.is_set():
-            try:
-                out = self.out_queue.get(timeout=0.2)
-            except queue.Empty:
-                continue
-            try:
-                frame = create_ethernet_frame(
-                    src_mac=self.src_mac,
-                    dst_mac=out.dst_mac,
-                    payload=out.payload,
-                    message_type=out.message_type,
-                    sequence=out.sequence,
-                    ether_type=out.ether_type,
-                )
-                self.sock.send_raw_frame(frame)
-            except Exception as e:
-                print(f"[tx] error sending: {e}")
-
-    def _dispatch_loop(self):
-        while not self.stop_evt.is_set():
-            try:
-                msg = self.in_queue.get(timeout=0.2)
-            except queue.Empty:
-                continue
-            handler = self.handlers.get(msg.mtype)
-            if handler:
-                try:
-                    handler(msg)
-                except Exception as e:
-                    print(f"[dispatch] handler {msg.mtype} failed: {e}")
-            else:
-                pass
-
-    //TODO: ARREGLAR ESTO
-    def _timer_pump(self):
-        while not self.stop_evt.is_set():
-            now = time.time()
-            fired = []
-            for name, tnext in self.timers.items():
-                if now >= tnext:
-                    fired.append(name)
-                    self.timers[name] = now + self.timer_periods[name]
-            for name in fired:
-                cb = getattr(self, f"_timer_cb_{name}", None)
-                if cb:
-                    try:
-                        cb()
-                    except Exception as e:
-                        print(f"[timer {name}] error: {e}")
-            time.sleep(0.05)
+    def queue_frame_for_sending(self, frame_bytes: bytes):
+        self.outgoing_queue.put(frame_bytes)

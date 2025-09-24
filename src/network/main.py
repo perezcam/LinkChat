@@ -4,6 +4,10 @@ from enums.enums import MessageType
 from frame_creator import create_ethernet_frame
 from frame_decoder import decode_ethernet_frame
 
+import logging
+
+# Configuración básica de logging. Coloca esto al principio de tu script principal.
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Definir el EtherType para tu protocolo LinkChat
 ETHER_TYPE = 0x88B5  # Este será el EtherType para tu protocolo LinkChat
