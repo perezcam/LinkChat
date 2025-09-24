@@ -1,2 +1,0 @@
-Lógica central del protocolo, como el descubrimiento de nodos, 
-el establecimiento de sesiones (handshake) y la mensajería.
