@@ -4,7 +4,7 @@ import queue
 import threading
 import time
 from typing import Callable, Dict
-from raw_socket import SocketManager
+from src.core.managers.raw_socket import SocketManager
 from src.core.enums.enums import MessageType
 from src.core.helpers.frame_decoder import decode_ethernet_frame
 from src.core.schemas.frame_schemas import FrameSchema
