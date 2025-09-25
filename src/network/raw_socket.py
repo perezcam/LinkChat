@@ -13,7 +13,8 @@ class SocketManager:
             return
         try:
             self._socket = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(self.ethertype))
-            self._socket.bind((self.interface, self.ethertype))
+           # self._socket.bind((self.interface, self.ethertype))
+            self._socket.bind((self.interface, socket.htons(self.ethertype)))
 
             print(f"socket crudo creado y vinculado a la interfaz {self.interface} con EtherType {hex(self.ethertype)}")
         except PermissionError:
@@ -49,5 +50,3 @@ class SocketManager:
         else:
             print("Error: _socket no está creado. No se puede cerrar.")
 
-
-#FIXME:BORRAR LOS PRINTS

@@ -1,20 +1,15 @@
-version: '3.8'
-
 services:
-  linkchat:
-    build: .
-    container_name: linkchat-app
-    cap_add:
-      - NET_RAW        # Permite el uso de raw sockets
-    volumes:
-      - ./config.json:/app/config.json:ro      # Monta el archivo de configuración
-    environment:
-      LINKCHAT_CONFIG: /app/config.json        # Configuración de la ruta del archivo
-      LINKCHAT_IFACE: ""                       # Interfaz a usar (puede sobreescribirse con env)
+  l2msg:
+    build:
+      context: .
+      dockerfile: Dockerfile
     networks:
-      - linknet
-    command: python3 /app/scripts/run.py  # Comando para ejecutar el script principal
+      - virtual_network
+    devices:
+      - "/dev/net/tun"  
+    entrypoint: ["python", "/network_config.py"]  # Execute network config script
+    privileged: true  # Allow container to access network devices
 
 networks:
-  linknet:
+  virtual_network:
     driver: bridge

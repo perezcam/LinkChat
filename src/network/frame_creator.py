@@ -1,5 +1,4 @@
 import struct
-
 from enums.enums import MessageType
 from enums.formats import EtherHeaderFormat, HeaderFormat
 

@@ -1,32 +1,32 @@
-import struct
+from raw_socket import SocketManager
+from service_threads import ServiceThreads
 
-from enums.enums import MessageType
-from frame_creator import create_ethernet_frame
-from frame_decoder import decode_ethernet_frame
+ETHER_TYPE = 0x88B5
 
+def on_neighbors_changed(neighs: dict):
+    # Muestra vecinos cada vez que cambien
+    resumen = [{ "mac": mac, "alias": v["alias"] } for mac, v in neighs.items()]
+    print("[app] vecinos =", resumen)
 
-# Definir el EtherType para tu protocolo LinkChat
-ETHER_TYPE = 0x88B5  # Este será el EtherType para tu protocolo LinkChat
-
-
-# Función principal de prueba
 def main():
-    # Ejemplo de parámetros
-    src_mac = "00:14:22:01:23:45"
-    dst_mac = "00:14:22:67:89:ab"
-    payload = "Hola"  # Mensaje a enviar
-    message_type = MessageType.HELLO  # Tipo de mensaje (HELLO)
-    sequence = 1  # Primer mensaje
+    iface = "eth0"          # o la que uses
+    src_mac = "aa:bb:cc:dd:ee:ff"  # pasa aquí tu MAC ya normalizada
+    alias = "Nodo-Camilo"
 
-    # Crear la trama Ethernet
-    frame = create_ethernet_frame(src_mac, dst_mac, payload, message_type, sequence, ETHER_TYPE)
+    sock = SocketManager(interface=iface, ethertype=ETHER_TYPE)
+    sock.create_raw_socket()
 
-    # Imprimir la cadena de bytes de la trama
-    print(f"Trama Ethernet creada (en bytes): {frame}")
+    svc = ServiceThreads(sock=sock, src_mac=src_mac, alias=alias)
+    svc.set_on_neighbors_changed(on_neighbors_changed)
+    svc.start()
 
-    # Decodificar la trama y mostrar el resultado
-    decoded_header = decode_ethernet_frame(frame)
-    print(f"Trama decodificada: {decoded_header}")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        svc.stop()
+        sock.close_socket()
 
 if __name__ == "__main__":
+    import time
     main()
