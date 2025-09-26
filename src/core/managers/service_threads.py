@@ -19,7 +19,7 @@ class ThreadManager:
         self.socket_manager = socket_manager
 
         self.incoming_queue: queue.Queue[FrameSchema] = queue.Queue()
-        self.outgoing_queue: queue.Queue[bytes] = queue.Queue()
+        self.outgoing_queue: queue.Queue[FrameSchema] = queue.Queue()
         self.shutdown_event = threading.Event()
 
         self.message_handlers: Dict[MessageType, Callable[[FrameSchema], None]] = {
@@ -111,6 +111,9 @@ class ThreadManager:
         for thread in self.threads:
             thread.join()
 
-
-    def queue_frame_for_sending(self, frame_bytes: bytes):
-        self.outgoing_queue.put(frame_bytes)
+    @property
+    def src_mac(self) -> str | None:
+        return getattr(self.socket_manager, "mac", None)
+    
+    def queue_frame_for_sending(self, frame: FrameSchema):
+        self.outgoing_queue.put(frame)
