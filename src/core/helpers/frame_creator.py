@@ -10,7 +10,7 @@ def _create_header(header: HeaderSchema) -> bytes:
     return struct.pack(header_format, header.message_type.value, header.sequence, header.payload_len)
 
 
-def create_ethernet_frame(frame_data : FrameSchema):
+def create_ethernet_frame(frame_data : FrameSchema) -> bytes:
 
     header = _create_header(frame_data.header)
 
