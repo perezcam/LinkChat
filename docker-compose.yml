@@ -1,15 +1,53 @@
+version: "3.8"
+
 services:
-  l2msg:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  # ---------- Opción A: Host networking (recomendada para la primera prueba) ----------
+  l2-discovery:
+    build: .
+    container_name: l2-discovery
+    # Comparte net namespace con el host: simplifica broadcast L2 y raw sockets
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    environment:
+      # Pásalo a tu app si lo consumes desde os.environ (o usa tu network_config)
+      INTERFACE: ${INTERFACE:-eth0}
+      ALIAS: ${ALIAS:-Nodo-Docker}
+      ETHER_TYPE: ${ETHER_TYPE:-0x88B5}
+    # Monta en solo lectura para evitar cambios accidentales; quita ":ro" si vas a editar desde fuera
+    volumes:
+      - ./:/app:ro
+    command: python -u main.py
+    restart: unless-stopped
+    # user: "0:0"  # root por defecto; deja root para CAP_NET_RAW
+
+  # ---------- Opción B: Macvlan (perfil opcional) ----------
+  l2-discovery-macvlan:
+    profiles: ["macvlan"]
+    build: .
+    container_name: l2-discovery-macvlan
     networks:
-      - virtual_network
-    devices:
-      - "/dev/net/tun"  
-    entrypoint: ["python", "/network_config.py"]  # Execute network config script
-    privileged: true  # Allow container to access network devices
+      lan-macvlan:
+        ipv4_address: ${IP:-192.168.1.50}
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    environment:
+      INTERFACE: ${INTERFACE:-eth0}
+      ALIAS: ${ALIAS:-Nodo-Docker}
+      ETHER_TYPE: ${ETHER_TYPE:-0x88B5}
+    volumes:
+      - ./:/app:ro
+    command: python -u main.py
+    restart: unless-stopped
 
 networks:
-  virtual_network:
-    driver: bridge
+  lan-macvlan:
+    driver: macvlan
+    driver_opts:
+      parent: ${PARENT_IF:-eth0}     # NIC físico del host (ej: enp3s0, eth0)
+    ipam:
+      config:
+        - subnet: ${SUBNET:-192.168.1.0/24}
+          gateway: ${GATEWAY:-192.168.1.1}

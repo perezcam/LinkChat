@@ -1,4 +1,3 @@
-# src/core/managers/raw_socket.py
 import logging
 import socket
 
