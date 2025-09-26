@@ -6,9 +6,9 @@ from contextlib import suppress
 
 # Importa las implementaciones del proyecto (rutas según tu estructura)
 from src.core.managers.raw_socket import SocketManager          # crea el socket y fija .mac
-from src.core.managers.service_threads import ThreadManager     # hilos: receiver/sender/dispatcher/scheduler
-from src.core.discover import Discovery                         # discovery que usa ThreadManager
-
+from src.core.managers.service_threads import ThreadManager     
+from src.discover import Discovery                         # discovery que usa ThreadManager
+from network_config import get_runtime_config 
 # EtherType que estás usando en el proyecto
 ETHER_TYPE = 0x88B5
 
@@ -17,8 +17,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 
 def main():
-    INTERFACE = "eth0"          # <- cambia por la interfaz real que usarás en la máquina / contenedor
-    ALIAS = "Nodo-Camilo"       # <- alias que quieres anunciar
+    cfg = get_runtime_config()
+    INTERFACE  = cfg["interface"]
+    ALIAS      = cfg["alias"]
+    ETHER_TYPE = cfg["ethertype"]
+
+    stop_requested = False
 
     # Señal para parada limpia
     stop_requested = False

@@ -4,6 +4,8 @@ from src.core.managers.service_threads import ThreadManager
 from src.core.schemas.frame_schemas import FrameSchema, HeaderSchema
 from src.core.schemas.scheduled_task import ScheduledTask
 from src.core.enums.enums import MessageType
+from network_config import get_ether_type
+
 
 class Discovery:
     BROADCAST_MAC = "ff:ff:ff:ff:ff:ff"
