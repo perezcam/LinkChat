@@ -1,7 +1,7 @@
 import time
 from typing import Callable, Dict, Any, Optional
 from src.core.managers.service_threads import ThreadManager
-from src.core.schemas.frame_schemas import FrameSchema
+from src.core.schemas.frame_schemas import FrameSchema, HeaderSchema
 from src.core.schemas.scheduled_task import ScheduledTask
 from src.core.enums.enums import MessageType
 
@@ -38,7 +38,7 @@ class Discovery:
 
         # Agenda tarea periódica para enviar DISCOVER_REQUEST
         self.service_threads.scheduled_tasks.append(
-            ScheduledTask(action=self._timer_cb_discover, interval=self.interval, last_run=0.0)
+            ScheduledTask(action=self._timer_cb_discover, interval=self.interval)
         )
 
     def detach(self):
@@ -61,13 +61,19 @@ class Discovery:
         self._seq = (self._seq + 1) & 0xFFFF
         payload = f"alias={self.alias}"
 
+        payload_bytes = payload.encode("utf-8") #Convierte a bytes
         frame = FrameSchema(
             src_mac=self.src_mac,
             dst_mac=self.BROADCAST_MAC,
-            payload=payload,
-            message_type=MessageType.DISCOVER_REQUEST,
-            sequence=self._seq,
+            ethertype=get_ether_type(),
+            header=HeaderSchema(
+                message_type=MessageType.DISCOVER_REQUEST,
+                sequence=self._seq,
+                payload_len=len(payload_bytes),
+            ),
+            payload=payload_bytes, 
         )
+
         self.service_threads.queue_frame_for_sending(frame)
 
     # -------------- Handlers de recepción --------------
@@ -76,19 +82,22 @@ class Discovery:
         Responde unicast con DISCOVER_REPLY cuando otro nodo hace DISCOVER_REQUEST.
         """
       
-        mac_origen = getattr(frame.header, "src_mac", None) or getattr(frame, "src_mac", None)
-        if not mac_origen:
-            return  # no hay destino válido
+        mac_origen = frame.src_mac
 
         self._seq = (self._seq + 1) & 0xFFFF
         payload = f"alias={self.alias}"
+        payload_bytes = payload.encode("utf-8") #Convierte a bytes
 
         reply = FrameSchema(
             src_mac=self.src_mac,
             dst_mac=mac_origen,
-            payload=payload,
-            message_type=MessageType.DISCOVER_REPLY,
-            sequence=self._seq,
+            ethertype=get_ether_type(),
+            header= HeaderSchema(
+                message_type=MessageType.DISCOVER_REPLY,
+                sequence=self._seq,
+                payload_len=len(payload_bytes)
+            ),
+            payload=payload_bytes
         )
         self.service_threads.queue_frame_for_sending(reply)
 
@@ -96,13 +105,12 @@ class Discovery:
         """
         Actualiza la tabla de vecinos cuando llega un DISCOVER_REPLY.
         """
-     
-        mac_vecino = getattr(frame.header, "src_mac", None) or getattr(frame, "src_mac", None)
-        payload = getattr(frame, "payload", "")  # cadena "alias=Nombre"
-        if not mac_vecino:
-            return
 
-        alias = self._parse_alias(payload)
+        mac_vecino = frame.src_mac
+        payload_bytes = frame.payload
+
+        payload_str = payload_bytes.decode("utf-8") #Convierte a str
+        alias = self._parse_alias(payload_str)
         now = time.time()
 
         entry = self.neighbors.get(mac_vecino)
