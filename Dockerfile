@@ -24,4 +24,5 @@ ENV INTERFACE=eth0 \
     ETHER_TYPE=0x88B5
 
 # Comando por defecto (tu main ya coordina socket -> threads -> discovery)
-CMD ["python", "-u", "main.py"]
+ENV PYTHONPATH=/app
+CMD ["python", "-u", "-m", "src.main"]

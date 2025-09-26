@@ -18,7 +18,7 @@ services:
     # Monta en solo lectura para evitar cambios accidentales; quita ":ro" si vas a editar desde fuera
     volumes:
       - ./:/app:ro
-    command: python -u main.py
+    command: python -u -m src.main
     restart: unless-stopped
     # user: "0:0"  # root por defecto; deja root para CAP_NET_RAW
 
@@ -39,7 +39,7 @@ services:
       ETHER_TYPE: ${ETHER_TYPE:-0x88B5}
     volumes:
       - ./:/app:ro
-    command: python -u main.py
+    command: python -u -m src.main
     restart: unless-stopped
 
 networks:

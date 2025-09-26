@@ -4,7 +4,7 @@ from src.core.managers.service_threads import ThreadManager
 from src.core.schemas.frame_schemas import FrameSchema, HeaderSchema
 from src.core.schemas.scheduled_task import ScheduledTask
 from src.core.enums.enums import MessageType
-from network_config import get_ether_type
+from src.prepare.network_config import get_ether_type, get_runtime_config
 
 
 class Discovery:

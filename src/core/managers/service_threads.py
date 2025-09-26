@@ -4,6 +4,7 @@ import queue
 import threading
 import time
 from typing import Callable, Dict
+from src.core.helpers.frame_creator import create_ethernet_frame
 from src.core.managers.raw_socket import SocketManager
 from src.core.enums.enums import MessageType
 from src.core.helpers.frame_decoder import decode_ethernet_frame
@@ -56,7 +57,8 @@ class ThreadManager:
         while not self.shutdown_event.is_set():
             try:
                 frame_to_send = self.outgoing_queue.get(timeout=1)
-                self.socket_manager.send_raw_frame(frame_to_send)
+                frame_to_send_bytes = create_ethernet_frame(frame_to_send)
+                self.socket_manager.send_raw_frame(frame_to_send_bytes)
                 self.outgoing_queue.task_done()
             except queue.Empty:
                 continue

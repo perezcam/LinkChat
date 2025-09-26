@@ -1,6 +1,6 @@
 import struct
 
-from enums.formats import EtherHeaderFormat, HeaderFormat
+from src.core.enums.formats import EtherHeaderFormat, HeaderFormat
 from src.core.schemas.frame_schemas import FrameSchema, HeaderSchema
 
 

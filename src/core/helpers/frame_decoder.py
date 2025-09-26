@@ -1,8 +1,10 @@
 import struct
 
-from enums.formats import EtherHeaderFormat, HeaderFormat
-from src.network.enums.enums import MessageType
-from src.network.schemas.frame_schemas import FrameSchema, HeaderSchema
+
+from src.core.enums.enums import MessageType
+from src.core.enums.formats import EtherHeaderFormat, HeaderFormat
+from src.core.schemas.frame_schemas import FrameSchema, HeaderSchema
+
 
 
 def decode_ethernet_frame(frame: bytes) -> FrameSchema:

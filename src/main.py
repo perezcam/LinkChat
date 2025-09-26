@@ -5,10 +5,12 @@ import time
 from contextlib import suppress
 
 # Importa las implementaciones del proyecto (rutas según tu estructura)
-from src.core.managers.raw_socket import SocketManager          # crea el socket y fija .mac
+          # crea el socket y fija .mac
+from src.prepare.network_config import get_runtime_config
+from src.core.managers.raw_socket import SocketManager
 from src.core.managers.service_threads import ThreadManager     
-from src.discover import Discovery                         # discovery que usa ThreadManager
-from network_config import get_runtime_config 
+                     # discovery que usa ThreadManager
+from src.discover.discover import Discovery 
 # EtherType que estás usando en el proyecto
 ETHER_TYPE = 0x88B5
 
