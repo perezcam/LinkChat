@@ -1,53 +1,28 @@
-version: "3.8"
-
 services:
-  # ---------- Opción A: Host networking (recomendada para la primera prueba) ----------
-  l2-discovery:
+  l2-a:
     build: .
-    container_name: l2-discovery
-    # Comparte net namespace con el host: simplifica broadcast L2 y raw sockets
-    network_mode: host
+    image: linkchat-l2-discovery
+    command: python  src/main.py
+    environment:
+      - INTERFACE=eth0
+      - ETHER_TYPE=0x88B5
+      - ALIAS=Nodo-A
     cap_add:
       - NET_RAW
-      - NET_ADMIN
-    environment:
-      # Pásalo a tu app si lo consumes desde os.environ (o usa tu network_config)
-      INTERFACE: ${INTERFACE:-eth0}
-      ALIAS: ${ALIAS:-Nodo-Docker}
-      ETHER_TYPE: ${ETHER_TYPE:-0x88B5}
-    # Monta en solo lectura para evitar cambios accidentales; quita ":ro" si vas a editar desde fuera
-    volumes:
-      - ./:/app:ro
-    command: python -u -m src.main
-    restart: unless-stopped
-    # user: "0:0"  # root por defecto; deja root para CAP_NET_RAW
+    networks: [l2lab]
 
-  # ---------- Opción B: Macvlan (perfil opcional) ----------
-  l2-discovery-macvlan:
-    profiles: ["macvlan"]
+  l2-b:
     build: .
-    container_name: l2-discovery-macvlan
-    networks:
-      lan-macvlan:
-        ipv4_address: ${IP:-192.168.1.50}
+    image: linkchat-l2-discovery
+    command: python  src/main.py
+    environment:
+      - INTERFACE=eth0
+      - ETHER_TYPE=0x88B5
+      - ALIAS=Nodo-B
     cap_add:
       - NET_RAW
-      - NET_ADMIN
-    environment:
-      INTERFACE: ${INTERFACE:-eth0}
-      ALIAS: ${ALIAS:-Nodo-Docker}
-      ETHER_TYPE: ${ETHER_TYPE:-0x88B5}
-    volumes:
-      - ./:/app:ro
-    command: python -u -m src.main
-    restart: unless-stopped
+    networks: [l2lab]
 
 networks:
-  lan-macvlan:
-    driver: macvlan
-    driver_opts:
-      parent: ${PARENT_IF:-eth0}     # NIC físico del host (ej: enp3s0, eth0)
-    ipam:
-      config:
-        - subnet: ${SUBNET:-192.168.1.0/24}
-          gateway: ${GATEWAY:-192.168.1.1}
+  l2lab:
+    driver: bridge

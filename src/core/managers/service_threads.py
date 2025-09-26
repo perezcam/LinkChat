@@ -18,7 +18,7 @@ class ThreadManager:
     """
     def __init__(self, socket_manager: SocketManager):
         self.socket_manager = socket_manager
-
+        self._started = False
         self.incoming_queue: queue.Queue[FrameSchema] = queue.Queue()
         self.outgoing_queue: queue.Queue[FrameSchema] = queue.Queue()
         self.shutdown_event = threading.Event()
@@ -104,6 +104,9 @@ class ThreadManager:
                 logging.error(f"[Dispatcher] Error: {e}")
 
     def start(self):
+        if self._started:
+            return
+        self._started = True
         for thread in self.threads:
             thread.start()
 

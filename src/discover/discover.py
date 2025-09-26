@@ -11,6 +11,7 @@ class Discovery:
     BROADCAST_MAC = "ff:ff:ff:ff:ff:ff"
 
     def __init__(self, service_threads: ThreadManager, alias: str, interval_seconds: float = 5.0):
+        self._attached = False
         self.service_threads = service_threads
         self.alias = alias
         self.interval = interval_seconds
@@ -33,7 +34,9 @@ class Discovery:
         Registra los handlers y agenda la tarea periódica de discover.
         Llamar después de que ThreadManager haya abierto el socket y seteado src_mac.
         """
-
+        if self._attached:
+            return
+        self._attached = True
         # Registra handlers
         self.service_threads.message_handlers[MessageType.DISCOVER_REQUEST] = self._on_discover_request
         self.service_threads.message_handlers[MessageType.DISCOVER_REPLY]   = self._on_discover_reply

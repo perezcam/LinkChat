@@ -14,9 +14,11 @@ from src.discover.discover import Discovery
 # EtherType que estás usando en el proyecto
 ETHER_TYPE = 0x88B5
 
-# Configuración mínima de logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - [pid=%(process)d] %(message)s",
+    force=True
+)
 
 def main():
     cfg = get_runtime_config()
