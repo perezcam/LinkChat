@@ -1,4 +1,3 @@
-
 import logging
 import queue
 import threading
@@ -44,12 +43,25 @@ class ThreadManager:
         while not self.shutdown_event.is_set():
             try:
                 frame_bytes = self.socket_manager.receive_raw_frame()
-                if frame_bytes:
+                if not frame_bytes:
+                    continue
+
+                try:
                     decoded_frame = decode_ethernet_frame(frame_bytes)
-                    self.incoming_queue.put(decoded_frame)
+                except ValueError as e:
+                    # Tip: ValueError lo usamos cuando el CRC no coincide (frame corrupto)
+                    logging.warning(f"[Receiver] Frame descartado (CRC inválido): {e}")
+                    continue  # no encolar
+
+                if decoded_frame is None:
+                    # Tip: Si tu decoder devuelve None para tipos/ethertype ajenos, simplemente ignora
+                    continue
+
+                self.incoming_queue.put(decoded_frame)
+
             except Exception as e:
                 logging.error(f"[Receiver] Error: {e}")
-                time.sleep(1) # Evitar un bucle de error muy rápido
+                time.sleep(1)  # Evitar un bucle de error muy rápido
 
     def _sender_loop(self):
         """Despacha mensajes desde la outgoing_queue."""

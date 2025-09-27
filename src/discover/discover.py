@@ -22,7 +22,7 @@ class Discovery:
         # MAC local
         self.src_mac = self.service_threads.src_mac
 
-        # Callback opcional si la app quiere enterarse de cambios
+        #Callback para detectar cambios en la tabla de vecinos
         self.on_neighbors_changed: Optional[Callable[[Dict[str, Dict[str, Any]]], None]] = None
 
         # Contador de secuencia
@@ -32,11 +32,11 @@ class Discovery:
     def attach(self):
         """
         Registra los handlers y agenda la tarea periódica de discover.
-        Llamar después de que ThreadManager haya abierto el socket y seteado src_mac.
         """
         if self._attached:
             return
         self._attached = True
+
         # Registra handlers
         self.service_threads.message_handlers[MessageType.DISCOVER_REQUEST] = self._on_discover_request
         self.service_threads.message_handlers[MessageType.DISCOVER_REPLY]   = self._on_discover_reply
@@ -66,7 +66,7 @@ class Discovery:
         self._seq = (self._seq + 1) & 0xFFFF
         payload = f"alias={self.alias}"
 
-        payload_bytes = payload.encode("utf-8") #Convierte a bytes
+        payload_bytes = payload.encode("utf-8") 
         frame = FrameSchema(
             src_mac=self.src_mac,
             dst_mac=self.BROADCAST_MAC,
@@ -91,7 +91,7 @@ class Discovery:
 
         self._seq = (self._seq + 1) & 0xFFFF
         payload = f"alias={self.alias}"
-        payload_bytes = payload.encode("utf-8") #Convierte a bytes
+        payload_bytes = payload.encode("utf-8")
 
         reply = FrameSchema(
             src_mac=self.src_mac,
@@ -114,7 +114,7 @@ class Discovery:
         mac_vecino = frame.src_mac
         payload_bytes = frame.payload
 
-        payload_str = payload_bytes.decode("utf-8") #Convierte a str
+        payload_str = payload_bytes.decode("utf-8")
         alias = self._parse_alias(payload_str)
         now = time.time()
 
@@ -123,7 +123,7 @@ class Discovery:
             entry["last_seen"] = now
         else:
             self.neighbors[mac_vecino] = {"alias": alias, "last_seen": now}
-            print(f"[neighbors] {mac_vecino} -> alias='{alias}'")
+            # print(f"[neighbors] {mac_vecino} -> alias='{alias}'")
 
         if self.on_neighbors_changed:
             try:
