@@ -1,32 +1,29 @@
-# Usamos una imagen base de Python oficial
-FROM python:3.14-rc-alpine
+# Imagen base
+FROM python:3.11-slim
 
-# Instalar dependencias de sistema necesarias para raw sockets y herramientas de red
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    net-tools \
-    iproute2 \
-    python3-dev \
-    libpcap-dev \
-    iputils-ping \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
 
-# Crear y establecer el directorio de trabajo
+# Paquetes mínimos de red para diagnóstico (opcionales pero útiles)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    iproute2 iputils-ping net-tools ethtool tcpdump \
+  && rm -rf /var/lib/apt/lists/*
+
+# Evita buffering en logs
+ENV PYTHONUNBUFFERED=1
+
+# Directorio de trabajo
 WORKDIR /app
 
-# Copiar el código fuente del proyecto al contenedor
-COPY . .
+# Copiamos el proyecto (ajusta si usas un subdirectorio)
+COPY . /app
 
-# Instalar las dependencias de Python desde el archivo requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Instala requirements si existe
+RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
 
-COPY src/prepare/network_config.py /network_config.py
-RUN chmod +x /network_config.py
+# Variables que tu app puede leer (INTERFACE, ALIAS, ETHER_TYPE)
+ENV INTERFACE=eth0 \
+    ALIAS=Nodo-Docker \
+    ETHER_TYPE=0x88B5
 
-# Establecer el script de configuración como el punto de entrada
-ENTRYPOINT ["python3", "/network_config.py"]
-
-# Configuración de la entrada por defecto para ejecutar la aplicación después de la configuración de red
-CMD ["python3", "src/main.py"]
-
+# Comando por defecto (tu main ya coordina socket -> threads -> discovery)
+ENV PYTHONPATH=/app
+CMD ["python", "-u", "-m", "src.main"]

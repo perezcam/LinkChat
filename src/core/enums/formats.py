@@ -1,17 +1,26 @@
 from enum import Enum
 
-class HeaderFormat(Enum):
-    MESSAGE_TYPE = 'B'  # 1 byte: message type
-    SEQUENCE = 'H'      # 2 bytes: sequence number
-    PAYLOAD_LEN = 'I'   # 4 bytes: payload size
-    
-    @classmethod
-    def get_format(cls):
-        return f'!{cls.MESSAGE_TYPE.value}{cls.SEQUENCE.value}{cls.PAYLOAD_LEN.value}'
-    
-    @classmethod
-    def get_len(cls):
-        return 7 #Returns total amount of bytes
+import struct
+
+class HeaderFormat:
+    @staticmethod
+    def get_format_without_checksum() -> str:
+        # message_type (H), sequence (I), payload_len (I)
+        return "!HII"
+
+    @staticmethod
+    def get_format_with_checksum() -> str:
+        # igual que arriba + checksum (I)
+        return "!HIII"
+
+    @staticmethod
+    def get_len_without_checksum() -> int:
+        return struct.calcsize(HeaderFormat.get_format_without_checksum())
+
+    @staticmethod
+    def get_len_with_checksum() -> int:
+        return struct.calcsize(HeaderFormat.get_format_with_checksum())
+
 
 
 class EtherHeaderFormat(Enum):

@@ -1,9 +1,9 @@
-
 import logging
 import queue
 import threading
 import time
 from typing import Callable, Dict
+from src.core.helpers.frame_creator import create_ethernet_frame
 from src.core.managers.raw_socket import SocketManager
 from src.core.enums.enums import MessageType
 from src.core.helpers.frame_decoder import decode_ethernet_frame
@@ -17,9 +17,9 @@ class ThreadManager:
     """
     def __init__(self, socket_manager: SocketManager):
         self.socket_manager = socket_manager
-
+        self._started = False
         self.incoming_queue: queue.Queue[FrameSchema] = queue.Queue()
-        self.outgoing_queue: queue.Queue[bytes] = queue.Queue()
+        self.outgoing_queue: queue.Queue[FrameSchema] = queue.Queue()
         self.shutdown_event = threading.Event()
 
         self.message_handlers: Dict[MessageType, Callable[[FrameSchema], None]] = {
@@ -43,12 +43,25 @@ class ThreadManager:
         while not self.shutdown_event.is_set():
             try:
                 frame_bytes = self.socket_manager.receive_raw_frame()
-                if frame_bytes:
+                if not frame_bytes:
+                    continue
+
+                try:
                     decoded_frame = decode_ethernet_frame(frame_bytes)
-                    self.incoming_queue.put(decoded_frame)
+                except ValueError as e:
+                    # Tip: ValueError lo usamos cuando el CRC no coincide (frame corrupto)
+                    logging.warning(f"[Receiver] Frame descartado (CRC inválido): {e}")
+                    continue  # no encolar
+
+                if decoded_frame is None:
+                    # Tip: Si tu decoder devuelve None para tipos/ethertype ajenos, simplemente ignora
+                    continue
+
+                self.incoming_queue.put(decoded_frame)
+
             except Exception as e:
                 logging.error(f"[Receiver] Error: {e}")
-                time.sleep(1) # Evitar un bucle de error muy rápido
+                time.sleep(1)  # Evitar un bucle de error muy rápido
 
     def _sender_loop(self):
         """Despacha mensajes desde la outgoing_queue."""
@@ -56,7 +69,8 @@ class ThreadManager:
         while not self.shutdown_event.is_set():
             try:
                 frame_to_send = self.outgoing_queue.get(timeout=1)
-                self.socket_manager.send_raw_frame(frame_to_send)
+                frame_to_send_bytes = create_ethernet_frame(frame_to_send)
+                self.socket_manager.send_raw_frame(frame_to_send_bytes)
                 self.outgoing_queue.task_done()
             except queue.Empty:
                 continue
@@ -102,6 +116,9 @@ class ThreadManager:
                 logging.error(f"[Dispatcher] Error: {e}")
 
     def start(self):
+        if self._started:
+            return
+        self._started = True
         for thread in self.threads:
             thread.start()
 
@@ -111,6 +128,9 @@ class ThreadManager:
         for thread in self.threads:
             thread.join()
 
-
-    def queue_frame_for_sending(self, frame_bytes: bytes):
-        self.outgoing_queue.put(frame_bytes)
+    @property
+    def src_mac(self) -> str | None:
+        return getattr(self.socket_manager, "mac", None)
+    
+    def queue_frame_for_sending(self, frame: FrameSchema):
+        self.outgoing_queue.put(frame)

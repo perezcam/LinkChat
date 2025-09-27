@@ -1,16 +1,28 @@
-version: '3.9'
 services:
-  l2msg:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    networks:
-      - virtual_network
-    devices:
-      - "/dev/net/tun"  
-    entrypoint: ["python", "/network_config.py"]  # Execute network config script
-    privileged: true  # Allow container to access network devices
+  l2-a:
+    build: .
+    image: linkchat-l2-discovery
+    command: python  src/main.py
+    environment:
+      - INTERFACE=eth0
+      - ETHER_TYPE=0x88B5
+      - ALIAS=Nodo-A
+    cap_add:
+      - NET_RAW
+    networks: [l2lab]
+
+  l2-b:
+    build: .
+    image: linkchat-l2-discovery
+    command: python  src/main.py
+    environment:
+      - INTERFACE=eth0
+      - ETHER_TYPE=0x88B5
+      - ALIAS=Nodo-B
+    cap_add:
+      - NET_RAW
+    networks: [l2lab]
 
 networks:
-  virtual_network:
+  l2lab:
     driver: bridge

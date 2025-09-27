@@ -1,23 +1,71 @@
-#!/bin/bash
 
-# Detectar interfaz LAN (Ethernet) activa usando ifconfig
-LAN_INTERFACE=$(ifconfig | grep -E 'en|eth' | awk '{print $1}')
+# network_config.py
+import os, socket, pathlib
 
-# Detectar interfaz Wi-Fi activa usando iwconfig
-WIFI_INTERFACE=$(iwconfig 2>&1 | grep -o '^[[:alnum:]]*')
+DEFAULT_ETHER_TYPE = "0x88B5"  # string para parseo uniforme
 
-# Comprobar si se encuentra una interfaz LAN
-if [ -n "$LAN_INTERFACE" ]; then
-  echo "Conexión LAN detectada en la interfaz: $LAN_INTERFACE"
-  docker network connect $LAN_INTERFACE my_container
+VIRTUAL_PREFIXES = ("lo", "docker", "br-", "veth", "tun", "tap", "vmnet", "tailscale", "wg")
 
-# Comprobar si se encuentra una interfaz Wi-Fi
-elif [ -n "$WIFI_INTERFACE" ]; then
-  echo "Conexión Wi-Fi detectada en la interfaz: $WIFI_INTERFACE"
-  docker network connect $WIFI_INTERFACE my_container
+def _parse_ethertype(val: str) -> int:
+    # Soporta "0x88B5" o "34933"
+    return int(str(val).strip(), 0)
 
-else
-  echo "No se encontró conexión LAN ni Wi-Fi. Usando red virtualizada predeterminada."
-  # Si no hay LAN ni Wi-Fi, conecta el contenedor a la red Dockerizada por defecto
-  docker network connect virtual_network my_container
-fi
+def get_ether_type() -> int:
+    return _parse_ethertype(os.environ.get("ETHER_TYPE", DEFAULT_ETHER_TYPE))
+
+def _is_candidate(ifname: str) -> bool:
+    if any(ifname.startswith(p) for p in VIRTUAL_PREFIXES):
+        return False
+    base = pathlib.Path("/sys/class/net") / ifname
+    return base.exists()
+
+def _operstate(ifname: str) -> str:
+    try:
+        return (pathlib.Path("/sys/class/net")/ifname/"operstate").read_text().strip()
+    except Exception:
+        return "unknown"
+
+def _is_wireless(ifname: str) -> bool:
+    return (pathlib.Path("/sys/class/net")/ifname/"wireless").exists()
+
+def _list_ifaces() -> list[str]:
+    try:
+        return [p.name for p in pathlib.Path("/sys/class/net").iterdir()]
+    except Exception:
+        return []
+
+def _pick_interface() -> str | None:
+    # Preferir cableadas UP, luego Wi-Fi UP, luego cualquiera UP
+    ifaces = [i for i in _list_ifaces() if _is_candidate(i)]
+    wired_up = [i for i in ifaces if not _is_wireless(i) and _operstate(i) == "up"]
+    wifi_up  = [i for i in ifaces if _is_wireless(i) and _operstate(i) == "up"]
+    any_up   = [i for i in ifaces if _operstate(i) == "up"]
+
+    for group in (wired_up, wifi_up, any_up):
+        if group:
+            return group[0]
+    # Último recurso: la primera candidata aunque no esté UP
+    return ifaces[0] if ifaces else None
+
+def get_interface() -> str:
+    # 1) Respeta env si existe y es válida
+    env_if = os.environ.get("INTERFACE")
+    if env_if and _is_candidate(env_if):
+        return env_if
+    # 2) Autodetecta
+    picked = _pick_interface()
+    if picked:
+        return picked
+    # 3) Fallback común en contenedores con network_mode: host
+    return "eth0"
+
+def get_alias() -> str:
+    return os.environ.get("ALIAS") or socket.gethostname()
+
+def get_runtime_config() -> dict:
+    return {
+        "interface": get_interface(),
+        "alias": get_alias(),
+        "ethertype": get_ether_type(),
+    }
+
