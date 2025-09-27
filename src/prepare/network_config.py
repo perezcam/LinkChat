@@ -1,3 +1,4 @@
+
 # network_config.py
 import os, socket, pathlib
 
@@ -67,3 +68,4 @@ def get_runtime_config() -> dict:
         "alias": get_alias(),
         "ethertype": get_ether_type(),
     }
+
