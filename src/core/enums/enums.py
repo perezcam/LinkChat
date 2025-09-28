@@ -8,4 +8,5 @@ class MessageType(Enum):
     FILE_END = 0x05 # Message type that indicates the end of a file transfer
     DISCOVER_REQUEST = auto()
     DISCOVER_REPLY   = auto()
+    APP_MESSAGE = auto()
 
