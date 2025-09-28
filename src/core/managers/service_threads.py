@@ -131,16 +131,18 @@ class ThreadManager:
             if ctx.finished:
                 self._ctx_by_id.pop(ctx.file_id)
                 continue
+            with ctx.lock:
+                self._retransfer_expired(ctx, now)
 
-            self._retransfer_expired(ctx, now)
-
-            if not ctx.finished:
-                self._refill_window(ctx)
+                if not ctx.finished:
+                    self._refill_window(ctx)
             
             # Completado
             if ctx.last_acked + 1 >= ctx.total_chunks and not ctx.finished:
-                self.file_transfer_handler.get_file_fin_frame(ctx, status="ok")
-                ctx.finished = True     
+                frame: FrameSchema = self.file_transfer_handler.get_file_fin_frame(ctx, status="ok")
+                self.queue_frame_for_sending(frame)
+                with ctx.lock:
+                    ctx.finished = True     
 
     def _mark_inflight(self, ctx : FileCtxSchema, idx: int, retries: int = 0) :
         ctx.inflight[idx] = (time.time(), retries) 

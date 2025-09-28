@@ -72,11 +72,12 @@ class FileSender:
         except ValueError:
             return
         # Marca como ACK todo < next_needed
-        for idx in list(ctx.inflight.keys()):
-            if idx < next_needed:
-                ctx.acked.add(idx)
-                ctx.inflight.pop(idx, None)
-                ctx.last_acked = max(ctx.last_acked, next_needed - 1)
+        with ctx.lock:
+            for idx in list(ctx.inflight.keys()):
+                if idx < next_needed:
+                    ctx.acked.add(idx)
+                    ctx.inflight.pop(idx, None)
+            ctx.last_acked = max(ctx.last_acked, next_needed - 1)
 
     def _on_fin(self, frame: FrameSchema):
         payload = frame.payload.decode("utf-8")
@@ -92,7 +93,8 @@ class FileSender:
         if not ctx:
             return
         
-        ctx.finished = True
+        with ctx.lock:
+            ctx.finished = True
         if status != "ok":
             reason = kv.get("reason", "")
             print(f"FIN error para {file_id}: {reason}")

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import threading
 from typing import Dict, Set, Tuple
 
 @dataclass
@@ -20,3 +21,5 @@ class FileCtxSchema:
     inflight: Dict[int, Tuple[float, int]] = field(default_factory=dict)
     acked: Set[int] = field(default_factory=set)
     finished: bool = False
+
+    lock: threading.Lock = field(default_factory=threading.Lock, repr=False) #mutex
