@@ -10,7 +10,7 @@ from src.core.helpers.frame_decoder import decode_ethernet_frame
 from src.core.schemas.frame_schemas import FrameSchema
 from src.core.schemas.scheduled_task import ScheduledTask
 from src.file_transfer.handlers.file_transfer_handler import FileTransferHandler
-from src.file_transfer.schemas.send_ctx import FileCtxSchema
+from src.file_transfer.schemas.send_ctx import FileSendCtxSchema
 
 class ThreadManager:
     """
@@ -28,7 +28,7 @@ class ThreadManager:
         self._message_handlers: Dict[MessageType, Callable[[FrameSchema], None]] = {}
         self._scheduled_tasks: list[ScheduledTask] = []
 
-        self._ctx_by_id: Dict[str, FileCtxSchema] = {}
+        self._ctx_by_id: Dict[str, FileSendCtxSchema] = {}
 
 
         self.receiver =     threading.Thread(target=self._receiver_loop,    name="receiver",    daemon=True)
@@ -144,10 +144,10 @@ class ThreadManager:
                 with ctx.lock:
                     ctx.finished = True     
 
-    def _mark_inflight(self, ctx : FileCtxSchema, idx: int, retries: int = 0) :
+    def _mark_inflight(self, ctx : FileSendCtxSchema, idx: int, retries: int = 0) :
         ctx.inflight[idx] = (time.time(), retries) 
 
-    def _retransfer_expired(self, ctx: FileCtxSchema, now: float):
+    def _retransfer_expired(self, ctx: FileSendCtxSchema, now: float):
         # 1) Retransmitir vencidos
         for idx, (last_time, retries) in list(ctx.inflight.items()):
             if now - last_time >= ctx.timeout_s:
@@ -164,7 +164,7 @@ class ThreadManager:
                 self.queue_frame_for_sending(frame)
                 self._mark_inflight(ctx, idx, retries=retries+1)
 
-    def _refill_window(self, ctx: FileCtxSchema):
+    def _refill_window(self, ctx: FileSendCtxSchema):
         while len(ctx.inflight) < ctx.window_size and ctx.next_to_send < ctx.total_chunks:
             idx = ctx.next_to_send
             frame : FrameSchema = self.file_transfer_handler.get_data_chunk(ctx, idx)
@@ -206,8 +206,8 @@ class ThreadManager:
             t for t in self._scheduled_tasks if t.action is not action
         ]
 
-    def add_ctx_by_id(self, id: str, ctx: FileCtxSchema):
+    def add_ctx_by_id(self, id: str, ctx: FileSendCtxSchema):
         self._ctx_by_id[id] = ctx 
 
-    def get_ctx_by_id(self, id: str) -> FileCtxSchema | None:
+    def get_ctx_by_id(self, id: str) -> FileSendCtxSchema | None:
         return self._ctx_by_id.get(id)

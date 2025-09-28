@@ -3,7 +3,7 @@ import threading
 from typing import Dict, Set, Tuple
 
 @dataclass
-class FileCtxSchema:
+class FileSendCtxSchema:
     file_id: str
     dst_mac: str
     path: str

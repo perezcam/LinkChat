@@ -5,7 +5,7 @@ from src.core.managers.service_threads import ThreadManager
 from src.core.schemas.frame_schemas import FrameSchema
 from src.file_transfer.helpers.parse_payload import parse_payload
 from src.file_transfer.helpers.get_file_hash import get_file_hash
-from src.file_transfer.schemas.send_ctx import FileCtxSchema
+from src.file_transfer.schemas.send_ctx import FileSendCtxSchema
 
 
 class FileSender: 
@@ -29,7 +29,7 @@ class FileSender:
         total_chunks = (file_size + self._chunk_size -1) // self._chunk_size
         file_id = f"{file_name}-{hash_sha256_hex[:12]}"
 
-        ctx = FileCtxSchema(
+        ctx = FileSendCtxSchema(
             file_id=file_id,
             dst_mac=dst_mac,
             path=path,
@@ -45,7 +45,7 @@ class FileSender:
         return file_id
     
 
-    def _send_meta(self, ctx: FileCtxSchema, file_name: str):
+    def _send_meta(self, ctx: FileSendCtxSchema, file_name: str):
         payload = (
             f"file_id={ctx.file_id}\n"
             f"name={file_name}\n"

@@ -2,7 +2,7 @@ import base64
 from network_config import get_ether_type
 from src.core.enums.enums import MessageType
 from src.core.schemas.frame_schemas import FrameSchema, HeaderSchema
-from src.file_transfer.schemas.send_ctx import FileCtxSchema
+from src.file_transfer.schemas.send_ctx import FileSendCtxSchema
 
 
 class FileTransferHandler:
@@ -14,13 +14,18 @@ class FileTransferHandler:
         # Serializa en líneas: key=value\n
         return ("\n".join(f"{k}={v}" for k, v in kwargs.items()) + "\n").encode("utf-8")
 
-    def get_file_fin_frame(self, ctx: FileCtxSchema, status: str, reason: str = "") -> FrameSchema:
+    def get_file_fin_frame(self, ctx: FileSendCtxSchema, status: str, reason: str = "") -> FrameSchema:
         payload_bytes = self._kv_bytes(file_id=ctx.file_id, status=status) if not reason \
                         else self._kv_bytes(file_id=ctx.file_id, status=status, reason=reason)
         return self.get_frame(ctx.dst_mac, MessageType.FILE_FIN, payload_bytes)
     
+    def receiver_get_file_fin_frame(self, dst_mac: str, file_id: str, status: str, reason: str = "") -> FrameSchema:
+        payload_bytes = self._kv_bytes(file_id=file_id, status=status) if not reason \
+                        else self._kv_bytes(file_id=file_id, status=status, reason=reason)
+        return self.get_frame(dst_mac, MessageType.FILE_FIN, payload_bytes)
+    
 
-    def get_data_chunk(self, ctx: FileCtxSchema, idx: int) -> FrameSchema:
+    def get_data_chunk(self, ctx: FileSendCtxSchema, idx: int) -> FrameSchema:
         #Get chunk of file 
         with open(ctx.path, "rb") as f:
             f.seek(idx * ctx.chunk_size)
