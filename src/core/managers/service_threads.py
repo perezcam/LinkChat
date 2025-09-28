@@ -9,40 +9,43 @@ from src.core.enums.enums import MessageType
 from src.core.helpers.frame_decoder import decode_ethernet_frame
 from src.core.schemas.frame_schemas import FrameSchema
 from src.core.schemas.scheduled_task import ScheduledTask
+from src.file_transfer.handlers.file_transfer_handler import FileTransferHandler
+from src.file_transfer.schemas.send_ctx import FileCtxSchema
 
 class ThreadManager:
     """
     Orquesta los hilos de trabajo para la aplicación de chat.
     Gestiona la recepción, el envío, el procesamiento de mensajes y las tareas periódicas.
     """
-    def __init__(self, socket_manager: SocketManager):
-        self.socket_manager = socket_manager
+    def __init__(self, socket_manager: SocketManager, file_transfer_handler : FileTransferHandler):
+        self._socket_manager = socket_manager
         self._started = False
-        self.incoming_queue: queue.Queue[FrameSchema] = queue.Queue()
-        self.outgoing_queue: queue.Queue[FrameSchema] = queue.Queue()
-        self.shutdown_event = threading.Event()
+        self._incoming_queue: queue.Queue[FrameSchema] = queue.Queue()
+        self._outgoing_queue: queue.Queue[FrameSchema] = queue.Queue()
+        self._shutdown_event = threading.Event()
+        self.file_transfer_handler = file_transfer_handler
 
-        self.message_handlers: Dict[MessageType, Callable[[FrameSchema], None]] = {
-            # TODO: Añade aquí los manejadores para transferencia de archivos, etc.
-            # O crea funciones que permitan agregar callables tanto al message handler como al scheduled_tasks
-        }
-        self.scheduled_tasks: list[ScheduledTask] = []
+        self._message_handlers: Dict[MessageType, Callable[[FrameSchema], None]] = {}
+        self._scheduled_tasks: list[ScheduledTask] = []
+
+        self._ctx_by_id: Dict[str, FileCtxSchema] = {}
 
 
-        self.receiver = threading.Thread(target=self._receiver_loop, name="receiver", daemon=True)
-        self.sender = threading.Thread(target=self._sender_loop, name="sender", daemon=True)
-        self.scheduler = threading.Thread(target=self._scheduler_loop, name="scheduler", daemon=True)
-        self.dispatcher = threading.Thread(target=self._dispatcher_loop, name="dispatcher", daemon=True)
+        self.receiver =     threading.Thread(target=self._receiver_loop,    name="receiver",    daemon=True)
+        self.sender =       threading.Thread(target=self._sender_loop,      name="sender",      daemon=True)
+        self.scheduler =    threading.Thread(target=self._scheduler_loop,   name="scheduler",   daemon=True)
+        self.dispatcher =   threading.Thread(target=self._dispatcher_loop,  name="dispatcher",  daemon=True)
+        self.file_sender_thread =  threading.Thread(target=self._file_sender_loop, name="file_sender", daemon=True)
 
-        self.threads = [self.receiver, self.sender, self.scheduler, self.dispatcher]
+        self.threads = [self.receiver, self.sender, self.scheduler, self.dispatcher, self.file_sender_thread]
 
 
     def _receiver_loop(self):
         """Recibe mensajes y los pone en la incoming_queue."""
         logging.info("[Receiver] Hilo iniciado.")
-        while not self.shutdown_event.is_set():
+        while not self._shutdown_event.is_set():
             try:
-                frame_bytes = self.socket_manager.receive_raw_frame()
+                frame_bytes = self._socket_manager.receive_raw_frame()
                 if not frame_bytes:
                     continue
 
@@ -57,7 +60,7 @@ class ThreadManager:
                     # Tip: Si tu decoder devuelve None para tipos/ethertype ajenos, simplemente ignora
                     continue
 
-                self.incoming_queue.put(decoded_frame)
+                self._incoming_queue.put(decoded_frame)
 
             except Exception as e:
                 logging.error(f"[Receiver] Error: {e}")
@@ -66,12 +69,12 @@ class ThreadManager:
     def _sender_loop(self):
         """Despacha mensajes desde la outgoing_queue."""
         logging.info("[Sender] Hilo iniciado.")
-        while not self.shutdown_event.is_set():
+        while not self._shutdown_event.is_set():
             try:
-                frame_to_send = self.outgoing_queue.get(timeout=1)
+                frame_to_send = self._outgoing_queue.get(timeout=1)
                 frame_to_send_bytes = create_ethernet_frame(frame_to_send)
-                self.socket_manager.send_raw_frame(frame_to_send_bytes)
-                self.outgoing_queue.task_done()
+                self._socket_manager.send_raw_frame(frame_to_send_bytes)
+                self._outgoing_queue.task_done()
             except queue.Empty:
                 continue
             except Exception as e:
@@ -80,10 +83,10 @@ class ThreadManager:
     def _scheduler_loop(self):
         logging.info("[Scheduler] Hilo iniciado.")
         
-        while not self.shutdown_event.is_set():
+        while not self._shutdown_event.is_set():
             current_time = time.time()
             
-            for task in self.scheduled_tasks:
+            for task in self._scheduled_tasks:
                 if current_time - task.last_run >= task.interval:
                     try:
                         logging.info(f"[Scheduler] Ejecutando tarea periódica: {task.action.__name__}")
@@ -94,17 +97,17 @@ class ThreadManager:
                         logging.error(f"[Scheduler] Error ejecutando la tarea {task.action.__name__}: {e}")
 
             # Espera un poco para no consumir 100% de CPU.
-            self.shutdown_event.wait(timeout=1)
+            self._shutdown_event.wait(timeout=1)
         
 
     def _dispatcher_loop(self):
         """Procesa mensajes de la incoming_queue."""
         logging.info("[Dispatcher] Hilo iniciado.")
-        while not self.shutdown_event.is_set():
+        while not self._shutdown_event.is_set():
             try:
-                received_frame = self.incoming_queue.get(timeout=1)
+                received_frame = self._incoming_queue.get(timeout=1)
                 
-                handler = self.message_handlers.get(received_frame.header.message_type)
+                handler = self._message_handlers.get(received_frame.header.message_type)
                 if handler:
                     handler(received_frame)
                 else:
@@ -115,6 +118,58 @@ class ThreadManager:
             except Exception as e:
                 logging.error(f"[Dispatcher] Error: {e}")
 
+
+    def _file_sender_loop(self):
+        """Rellena ventana, retransmite chunks perdidos, finaliza si aplica """
+        while not self._shutdown_event.is_set():     
+            self._pump()  
+            time.sleep(0.02)  
+
+    def _pump(self):
+        now = time.time()
+        for ctx in list(self._ctx_by_id.values()):
+            if ctx.finished:
+                self._ctx_by_id.pop(ctx.file_id)
+                continue
+
+            self._retransfer_expired(ctx, now)
+
+            if not ctx.finished:
+                self._refill_window(ctx)
+            
+            # Completado
+            if ctx.last_acked + 1 >= ctx.total_chunks and not ctx.finished:
+                self.file_transfer_handler.get_file_fin_frame(ctx, status="ok")
+                ctx.finished = True     
+
+    def _mark_inflight(self, ctx : FileCtxSchema, idx: int, retries: int = 0) :
+        ctx.inflight[idx] = (time.time(), retries) 
+
+    def _retransfer_expired(self, ctx: FileCtxSchema, now: float):
+        # 1) Retransmitir vencidos
+        for idx, (last_time, retries) in list(ctx.inflight.items()):
+            if now - last_time >= ctx.timeout_s:
+                if retries >= ctx.max_retries:
+                    frame : FrameSchema = self.file_transfer_handler.get_file_fin_frame(
+                        ctx, 
+                        status="error", 
+                        reason="timeout"
+                    )
+                    self.queue_frame_for_sending(frame)
+                    ctx.finished = True
+                    break
+                frame : FrameSchema = self.file_transfer_handler.get_data_chunk(ctx, idx)
+                self.queue_frame_for_sending(frame)
+                self._mark_inflight(ctx, idx, retries=retries+1)
+
+    def _refill_window(self, ctx: FileCtxSchema):
+        while len(ctx.inflight) < ctx.window_size and ctx.next_to_send < ctx.total_chunks:
+            idx = ctx.next_to_send
+            frame : FrameSchema = self.file_transfer_handler.get_data_chunk(ctx, idx)
+            self.queue_frame_for_sending(frame)
+            self._mark_inflight(ctx, idx)
+            ctx.next_to_send += 1
+
     def start(self):
         if self._started:
             return
@@ -123,14 +178,34 @@ class ThreadManager:
             thread.start()
 
     def stop(self):
-        self.shutdown_event.set()
+        self._shutdown_event.set()
 
         for thread in self.threads:
             thread.join()
 
     @property
     def src_mac(self) -> str | None:
-        return getattr(self.socket_manager, "mac", None)
+        return getattr(self._socket_manager, "mac", None)
     
     def queue_frame_for_sending(self, frame: FrameSchema):
-        self.outgoing_queue.put(frame)
+        self._outgoing_queue.put(frame)
+
+    def add_message_handler(self, msg_type: MessageType, f: Callable[[FrameSchema], None]):
+        self._message_handlers[msg_type] = f
+
+    def remove_message_handler(self, msg_type: MessageType):
+        self._message_handlers.pop(msg_type, None)
+
+    def add_scheduled_task(self, task: ScheduledTask):
+        self._scheduled_tasks.append(task)
+
+    def remove_scheduled_task(self, action: Callable[[], None]):
+        self._scheduled_tasks = [
+            t for t in self._scheduled_tasks if t.action is not action
+        ]
+
+    def add_ctx_by_id(self, id: str, ctx: FileCtxSchema):
+        self._ctx_by_id[id] = ctx 
+
+    def get_ctx_by_id(self, id: str) -> FileCtxSchema | None:
+        return self._ctx_by_id.get(id)

@@ -38,11 +38,11 @@ class Discovery:
         self._attached = True
 
         # Registra handlers
-        self.service_threads.message_handlers[MessageType.DISCOVER_REQUEST] = self._on_discover_request
-        self.service_threads.message_handlers[MessageType.DISCOVER_REPLY]   = self._on_discover_reply
+        self.service_threads.add_message_handler(MessageType.DISCOVER_REQUEST, self._on_discover_request)
+        self.service_threads.add_message_handler(MessageType.DISCOVER_REPLY, self._on_discover_reply)
 
         # Agenda tarea periódica para enviar DISCOVER_REQUEST
-        self.service_threads.scheduled_tasks.append(
+        self.service_threads.add_scheduled_task(
             ScheduledTask(action=self._timer_cb_discover, interval=self.interval)
         )
 
@@ -50,11 +50,10 @@ class Discovery:
         """
         (Opcional) Quita handlers y tareas si necesitas desmontar Discovery.
         """
-        self.service_threads.message_handlers.pop(MessageType.DISCOVER_REQUEST, None)
-        self.service_threads.message_handlers.pop(MessageType.DISCOVER_REPLY, None)
-        self.service_threads.scheduled_tasks = [
-            t for t in self.service_threads.scheduled_tasks if t.action is not self._timer_cb_discover
-        ]
+        self.service_threads.remove_message_handler(MessageType.DISCOVER_REQUEST)
+        self.service_threads.remove_message_handler(MessageType.DISCOVER_REPLY)
+        self.service_threads.remove_scheduled_task(self._timer_cb_discover)
+        
     #TODO #para detectar eventos desp si queremos saber cuando detectamos a alguien nuevo actualizar la tabla visual de la app
     # -------------- API externa --------------
     def set_on_neighbors_changed(self, cb: Callable[[Dict[str, Dict[str, Any]]], None]):
