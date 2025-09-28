@@ -20,13 +20,13 @@ class Messaging:
         if self._attached:
             return
        
-        self.threads.message_handlers[MessageType.APP_MESSAGE] = self._on_app_message
+        self.threads.add_message_handler(MessageType.APP_MESSAGE, self._on_app_message)
         self._attached = True
 
     def detach(self):
         if not self._attached:
             return
-        self.threads.message_handlers.pop(MessageType.APP_MESSAGE, None)
+        self.threads.remove_message_handler(MessageType.APP_MESSAGE)
         self._attached = False
 
     # --- envío ---
