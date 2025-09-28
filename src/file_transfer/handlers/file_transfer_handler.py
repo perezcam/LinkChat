@@ -33,7 +33,7 @@ class FileTransferHandler:
         #Convert it to string
         b64 = base64.b64encode(data).decode("ascii")
         payload = self._kv_bytes(
-            file_id={ctx.file_id},
+            file_id=ctx.file_id,
             idx=idx,
             total=ctx.total_chunks,
             data_b64=b64

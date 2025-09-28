@@ -126,9 +126,6 @@ class FileReceiver:
 
         # Si se completó, valida hash fuera del lock (evita bloquear)
         if ctx.finished:
-            # Truncar al tamaño exacto por si el último chunk fue más pequeño
-            actual_size = (ctx.total_chunks - 1) * ctx.chunk_size + len(data) if idx == ctx.total_chunks - 1 else os.path.getsize(ctx.temp_path)
-
             calc = get_file_hash(ctx.temp_path)  
             if calc.lower() == ctx.sha256_expected.lower():
                 self._send_fin(ctx.file_id, frame.src_mac, "ok")
