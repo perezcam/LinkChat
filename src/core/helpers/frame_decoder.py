@@ -1,5 +1,5 @@
 import struct
-import zlib  # <- para CRC-32
+import zlib
 
 from src.core.enums.enums import MessageType
 from src.core.enums.formats import EtherHeaderFormat, HeaderFormat

@@ -1,29 +1,22 @@
-# Imagen base
 FROM python:3.11-slim
 
-
-# Paquetes mínimos de red para diagnóstico (opcionales pero útiles)
+# ncurses para TUI y locales UTF-8 para caracteres de caja
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    iproute2 iputils-ping net-tools ethtool tcpdump \
-  && rm -rf /var/lib/apt/lists/*
+    libncursesw6 ncurses-term locales \
+ && rm -rf /var/lib/apt/lists/* \
+ && localedef -i C -c -f UTF-8 C.UTF-8 || true
 
-# Evita buffering en logs
-ENV PYTHONUNBUFFERED=1
 
-# Directorio de trabajo
+ENV PYTHONUNBUFFERED=1 LANG=C.UTF-8 TERM=xterm
+
 WORKDIR /app
 
-# Copiamos el proyecto (ajusta si usas un subdirectorio)
-COPY . /app
+# (si tienes requirements.txt, descomenta estas dos líneas)
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
 
-# Instala requirements si existe
-RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
+# Copiamos el código
+COPY src/ /app/src/
 
-# Variables que tu app puede leer (INTERFACE, ALIAS, ETHER_TYPE)
-ENV INTERFACE=eth0 \
-    ALIAS=Nodo-Docker \
-    ETHER_TYPE=0x88B5
-
-# Comando por defecto (tu main ya coordina socket -> threads -> discovery)
-ENV PYTHONPATH=/app
-CMD ["python", "-u", "-m", "src.main"]
+# Comando por defecto
+CMD ["python", "-m", "src.main"]

@@ -1,27 +1,63 @@
 services:
   l2-a:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
     image: linkchat-l2-discovery
-    command: python  src/main.py
+    command: python -u -m src.main     # <- -u desactiva buffering
     environment:
       - INTERFACE=eth0
       - ETHER_TYPE=0x88B5
       - ALIAS=Nodo-A
-    cap_add:
-      - NET_RAW
+      - UI_MODE=cli
+      - PYTHONUNBUFFERED=1             # <- redundante pero seguro
+    cap_add: [NET_RAW, NET_ADMIN]
+    dns: [1.1.1.1, 8.8.8.8]
+    tty: true                          # <- abre TTY real
+    stdin_open: true                   # <- deja STDIN abierto para input()
+    restart: unless-stopped
     networks: [l2lab]
 
   l2-b:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
     image: linkchat-l2-discovery
-    command: python  src/main.py
+    command: python -u -m src.main
     environment:
       - INTERFACE=eth0
       - ETHER_TYPE=0x88B5
       - ALIAS=Nodo-B
-    cap_add:
-      - NET_RAW
+      - UI_MODE=cli
+      - PYTHONUNBUFFERED=1
+    cap_add: [NET_RAW, NET_ADMIN]
+    dns: [1.1.1.1, 8.8.8.8]
+    restart: unless-stopped
     networks: [l2lab]
+    tty: true
+    stdin_open: true
+
+  l2-c:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    image: linkchat-l2-discovery
+    command: python -u -m src.main
+    environment:
+      - INTERFACE=eth0
+      - ETHER_TYPE=0x88B5
+      - ALIAS=Nodo-C
+      - UI_MODE=cli
+      - PYTHONUNBUFFERED=1
+    cap_add: [NET_RAW, NET_ADMIN]
+    dns: [1.1.1.1, 8.8.8.8]
+    restart: unless-stopped
+    networks: [l2lab]
+    tty: true
+    stdin_open: true
 
 networks:
   l2lab:

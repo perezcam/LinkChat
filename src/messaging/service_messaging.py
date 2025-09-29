@@ -7,10 +7,9 @@ from src.core.schemas.frame_schemas import FrameSchema, HeaderSchema
 from src.prepare.network_config import get_ether_type
 
 class Messaging:
-    def __init__(self, threads: ThreadManager, neighbors_ref: Dict[str, Dict], alias: str):
+    def __init__(self, threads: ThreadManager, neighbors_ref: Dict[str, Dict]):
         self.threads = threads
         self.neighbors = neighbors_ref
-        self.alias = alias
         self._seq = 0
         self._on_message: Optional[Callable[[FrameSchema, str, bytes], None]] = None
         self._attached = False

@@ -1,5 +1,6 @@
 {
     "python.analysis.extraPaths": [
-        "./src/prepare"
+        "./src/prepare",
+        "./src/messaging"
     ]
 }

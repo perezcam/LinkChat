@@ -1,5 +1,3 @@
-
-# network_config.py
 import os, socket, pathlib
 
 DEFAULT_ETHER_TYPE = "0x88B5"  # string para parseo uniforme
@@ -60,7 +58,8 @@ def get_interface() -> str:
     return "eth0"
 
 def get_alias() -> str:
-    return os.environ.get("ALIAS") or socket.gethostname()
+    return os.environ.get("ALIAS") or socket.gethost
+    name()
 
 def get_runtime_config() -> dict:
     return {
@@ -68,4 +67,5 @@ def get_runtime_config() -> dict:
         "alias": get_alias(),
         "ethertype": get_ether_type(),
     }
+
 
