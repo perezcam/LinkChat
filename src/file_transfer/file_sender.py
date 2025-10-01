@@ -39,7 +39,9 @@ class FileSender:
             total_chunks=total_chunks
         )
         self.service_threads.add_ctx_by_id(file_id, ctx)
-
+        #TODO: annadir logica para esperar el ack de meta antes de annadir ctx?
+        #Ahora mismo funciona si se envia data antes que meta se descarta y se volvera a enviar despues
+        
         #Enviar META inicial
         self._send_meta(ctx, file_name)
         return file_id
