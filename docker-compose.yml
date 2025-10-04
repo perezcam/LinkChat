@@ -1,27 +1,45 @@
+version: "3.9"
+
 services:
   l2-a:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: linkchat-l2-discovery
-    command: python  src/main.py
+    container_name: linkchat-l2-a-1
     environment:
       - INTERFACE=eth0
       - ETHER_TYPE=0x88B5
-      - ALIAS=Nodo-A
+      - LOG_LEVEL=DEBUG
+      # Si ya migraste a payload binario, puedes subir a ~1300
+      - CHUNK_SIZE=900
+    # Mantén el contenedor vivo para ejecutar comandos con `docker exec`
+    command: ["sleep", "infinity"]
     cap_add:
       - NET_RAW
-    networks: [l2lab]
+    networks:
+      - l2lab
+    restart: unless-stopped
 
   l2-b:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: linkchat-l2-discovery
-    command: python  src/main.py
+    container_name: linkchat-l2-b-1
     environment:
       - INTERFACE=eth0
       - ETHER_TYPE=0x88B5
-      - ALIAS=Nodo-B
+      - LOG_LEVEL=DEBUG
+      # Si ya migraste a payload binario, puedes subir a ~1300
+      - CHUNK_SIZE=900
+    # Arranca en modo receptor y persiste archivos en /data/recv
+    command: ["python", "-m", "src.main", "recv", "--base-dir", "/data/recv"]
     cap_add:
       - NET_RAW
-    networks: [l2lab]
+    networks:
+      - l2lab
+    restart: unless-stopped
 
 networks:
   l2lab:

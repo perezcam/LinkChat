@@ -1,99 +1,168 @@
-import logging
-import signal
+# src/main.py
+import os
 import sys
 import time
-from contextlib import suppress
+import signal
+import argparse
+import logging
 
-# Importa las implementaciones del proyecto (rutas según tu estructura)
-          # crea el socket y fija .mac
-from src.prepare.network_config import get_runtime_config
 from src.core.managers.raw_socket import SocketManager
-from src.core.managers.service_threads import ThreadManager     
-                     # discovery que usa ThreadManager
-from src.discover.discover import Discovery 
-# EtherType que estás usando en el proyecto
-ETHER_TYPE = 0x88B5
+from src.core.managers.service_threads import ThreadManager
+from src.file_transfer.handlers.file_transfer_handler import FileTransferHandler
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - [pid=%(process)d] %(message)s",
-    force=True
-)
+# Estos dos módulos deben existir según tu estructura actual:
+from src.file_transfer.file_sender import FileSender
+from src.file_transfer.file_receiver import FileReceiver
+
+# --------------------------------------------------------------------------------------
+# Utilidad: leer INTERFACE y ETHER_TYPE desde env o defaults (alineado con docker-compose)
+# --------------------------------------------------------------------------------------
+def read_net_env():
+    interface = os.environ.get("INTERFACE", "eth0")
+    ether_type_str = os.environ.get("ETHER_TYPE", "0x88B5")
+    try:
+        ether_type = int(ether_type_str, 16)
+    except ValueError:
+        raise RuntimeError(f"ETHER_TYPE inválido: {ether_type_str}")
+    return interface, ether_type
+
+# --------------------------------------------------------------------------------------
+# Señales para apagado limpio
+# --------------------------------------------------------------------------------------
+_shutdown = False
+def _handle_sig(*_):
+    global _shutdown
+    _shutdown = True
+
+for _sig in (signal.SIGINT, signal.SIGTERM):
+    signal.signal(_sig, _handle_sig)
+
+# --------------------------------------------------------------------------------------
+# Modo receptor (server)
+# --------------------------------------------------------------------------------------
+def run_recv(base_dir: str | None):
+    interface, ether_type = read_net_env()
+    logging.info(f"[recv] Iniciando receptor en IF={interface} EtherType={hex(ether_type)} base_dir={base_dir or '(default)'}")
+
+    with SocketManager(interface=interface, ethertype=ether_type) as sock:
+        logging.info(f"[recv] MAC local: {sock.mac}")
+        ft_handler = FileTransferHandler(src_mac=sock.mac or "")
+        th = ThreadManager(socket_manager=sock, file_transfer_handler=ft_handler)
+
+        # Instancia el receptor (registra handlers)
+        FileReceiver(th, base_dir=base_dir or "")
+
+        th.start()
+        logging.info("[recv] Esperando archivos... Ctrl+C para salir")
+        try:
+            while not _shutdown:
+                time.sleep(0.5)
+        finally:
+            th.stop()
+            logging.info("[recv] Detenido.")
+
+# --------------------------------------------------------------------------------------
+# Modo emisor: enviar un archivo
+# --------------------------------------------------------------------------------------
+def run_send_file(path: str, dst_mac: str, chunk_size: int):
+    interface, ether_type = read_net_env()
+    logging.info(f"[send-file] Enviando archivo='{path}' a dst_mac={dst_mac} (chunk_size={chunk_size})")
+
+    with SocketManager(interface=interface, ethertype=ether_type) as sock:
+        logging.info(f"[send-file] MAC local: {sock.mac}")
+        ft_handler = FileTransferHandler(src_mac=sock.mac or "")
+        th = ThreadManager(socket_manager=sock, file_transfer_handler=ft_handler)
+
+        sender = FileSender(th, chunk_size=chunk_size)
+
+        th.start()
+        try:
+            file_id = sender.send_file(path=path, dst_mac=dst_mac)
+            # Espera activa hasta que el contexto termine
+            while True:
+                ctx = th.get_ctx_by_id(file_id)
+                if not ctx or ctx.finished:
+                    break
+                time.sleep(0.1)
+            logging.info(f"[send-file] Terminado: {file_id}")
+        finally:
+            th.stop()
+
+# --------------------------------------------------------------------------------------
+# Modo emisor: enviar una carpeta (secuencial)
+# --------------------------------------------------------------------------------------
+def run_send_folder(folder: str, dst_mac: str, chunk_size: int):
+    interface, ether_type = read_net_env()
+    logging.info(f"[send-folder] Enviando carpeta='{folder}' a dst_mac={dst_mac} (chunk_size={chunk_size})")
+
+    with SocketManager(interface=interface, ethertype=ether_type) as sock:
+        logging.info(f"[send-folder] MAC local: {sock.mac}")
+        ft_handler = FileTransferHandler(src_mac=sock.mac or "")
+        th = ThreadManager(socket_manager=sock, file_transfer_handler=ft_handler)
+
+        sender = FileSender(th, chunk_size=chunk_size)
+
+        th.start()
+        try:
+            sent = sender.send_folder(folder_path=folder, dst_mac=dst_mac)
+            for fid, rel in sent:
+                logging.info(f"[send-folder] OK: {fid} -> {rel}")
+            logging.info("[send-folder] Carpeta enviada.")
+        finally:
+            th.stop()
+
+# --------------------------------------------------------------------------------------
+# Arranque y CLI
+# --------------------------------------------------------------------------------------
+def build_parser():
+    p = argparse.ArgumentParser(
+        prog="linkchat",
+        description="CLI de pruebas para transferencia de archivos/carpeta por L2."
+    )
+    sub = p.add_subparsers(dest="cmd", required=False)
+
+    # recv
+    p_recv = sub.add_parser("recv", help="Modo receptor: escucha y guarda archivos.")
+    p_recv.add_argument("--base-dir", dest="base_dir", default=None, help="Directorio base donde guardar (por defecto ~/Downloads/recv)")
+
+    # send-file
+    p_sf = sub.add_parser("send-file", help="Enviar un archivo.")
+    p_sf.add_argument("path", help="Ruta del archivo a enviar (dentro del contenedor).")
+    p_sf.add_argument("dst_mac", help="MAC destino (receptor).")
+    p_sf.add_argument("--chunk", dest="chunk_size", type=int, default=int(os.environ.get("CHUNK_SIZE", "900")),
+                      help="Tamaño de chunk. Si usas payload binario, ~1300 es seguro.")
+
+    # send-folder
+    p_sd = sub.add_parser("send-folder", help="Enviar una carpeta (secuencial).")
+    p_sd.add_argument("folder", help="Ruta de la carpeta a enviar (dentro del contenedor).")
+    p_sd.add_argument("dst_mac", help="MAC destino (receptor).")
+    p_sd.add_argument("--chunk", dest="chunk_size", type=int, default=int(os.environ.get("CHUNK_SIZE", "900")),
+                      help="Tamaño de chunk. Si usas payload binario, ~1300 es seguro.")
+
+    return p
 
 def main():
-    cfg = get_runtime_config()
-    INTERFACE  = cfg["interface"]
-    ALIAS      = cfg["alias"]
-    ETHER_TYPE = cfg["ethertype"]
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO"),
+        format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+    parser = build_parser()
+    args = parser.parse_args()
 
-    stop_requested = False
+    # Si no hay subcomando, puedes dejar el modo "daemon" anterior (descubrimiento, etc.)
+    # Para pruebas, usaremos CLI: si no hay comando, mostramos ayuda.
+    if not args.cmd:
+        parser.print_help()
+        sys.exit(0)
 
-    # Señal para parada limpia
-    stop_requested = False
-
-    def _on_sigint(signum, frame):
-        nonlocal stop_requested
-        logging.info("Señal de terminación recibida. Iniciando cierre ordenado...")
-        stop_requested = True
-
-    signal.signal(signal.SIGINT, _on_sigint)
-    signal.signal(signal.SIGTERM, _on_sigint)
-
-    # 1) Abrir el SocketManager usando context manager (asegura que .mac quede disponible)
-    try:
-        with SocketManager(interface=INTERFACE, ethertype=ETHER_TYPE) as sock:
-            # Ahora sock.mac ya está establecido (get_mac/getsockname ya fue consultado)
-            logging.info(f"MAC local detectada: {sock.mac}")
-
-            # 2) Crear y arrancar ThreadManager (usa el socket ya abierto)
-            thmgr = ThreadManager(socket_manager=sock)
-
-            # (Opcional) si quieres registrar handlers adicionales: thmgr.message_handlers[...]=fn
-
-            thmgr.start()
-            logging.info("ThreadManager arrancado (receiver/sender/dispatcher/scheduler).")
-
-            # 3) Crear Discovery, adjuntarlo y arrancar su tarea periódica
-            discover = Discovery(service_threads=thmgr, alias=ALIAS, interval_seconds=5.0)
-            # attach registra handlers y añade la tarea periódica a ThreadManager
-            discover.attach()
-            logging.info("Discovery adjuntado y timer programado.")
-
-            # callback opcional para visualización cuando cambie la tabla de vecinos
-            def on_neighbors_changed(neighs):
-                resumen = [{ "mac": mac, "alias": v["alias"] } for mac, v in neighs.items()]
-                logging.info(f"[app] vecinos = {resumen}")
-
-            discover.set_on_neighbors_changed(on_neighbors_changed)
-
-            # Bucle principal: se queda hasta que pidamos parar
-            try:
-                while not stop_requested:
-                    time.sleep(0.5)
-            except KeyboardInterrupt:
-                stop_requested = True
-
-            # ------- Cierre ordenado -------
-            logging.info("Parando ThreadManager...")
-            thmgr.stop()
-            # ThreadManager.stop() usa shutdown_event y hace join() a los hilos
-
-            # Si Discovery necesitara detach (no obligatorio), lo hacemos:
-            with suppress(Exception):
-                discover.detach()
-
-            logging.info("Aplicación finalizada limpiamente.")
-
-    except PermissionError:
-        logging.error("No tienes permisos para abrir raw sockets. Ejecuta con sudo o ajusta capacidades del contenedor.")
-        sys.exit(1)
-    except OSError as e:
-        logging.error(f"Error al abrir el socket: {e}")
-        sys.exit(1)
-    except Exception as e:
-        logging.exception(f"Error inesperado en main: {e}")
-        sys.exit(1)
-
+    if args.cmd == "recv":
+        run_recv(base_dir=args.base_dir)
+    elif args.cmd == "send-file":
+        run_send_file(path=args.path, dst_mac=args.dst_mac, chunk_size=args.chunk_size)
+    elif args.cmd == "send-folder":
+        run_send_folder(folder=args.folder, dst_mac=args.dst_mac, chunk_size=args.chunk_size)
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
     main()
