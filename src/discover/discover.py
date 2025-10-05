@@ -16,16 +16,13 @@ class Discovery:
         self.alias = alias
         self.interval = interval_seconds
 
-        # Tabla de vecinos: mac -> {"alias": str, "last_seen": epoch}
         self.neighbors: Dict[str, Dict[str, Any]] = {}
 
-        # MAC local
         self.src_mac = self.service_threads.src_mac
 
         #Callback para detectar cambios en la tabla de vecinos
         self.on_neighbors_changed: Optional[Callable[[Dict[str, Dict[str, Any]]], None]] = None
 
-        # Contador de secuencia
         self._seq: int = 0
 
     # -------------- Registro en ThreadManager --------------
@@ -37,24 +34,22 @@ class Discovery:
             return
         self._attached = True
 
-        # Registra handlers
         self.service_threads.add_message_handler(MessageType.DISCOVER_REQUEST, self._on_discover_request)
         self.service_threads.add_message_handler(MessageType.DISCOVER_REPLY, self._on_discover_reply)
 
-        # Agenda tarea periódica para enviar DISCOVER_REQUEST
         self.service_threads.add_scheduled_task(
             ScheduledTask(action=self._timer_cb_discover, interval=self.interval)
         )
 
     def detach(self):
         """
-        (Opcional) Quita handlers y tareas si necesitas desmontar Discovery.
+        Quitar handlers y tareas para desmontar discovery
         """
         self.service_threads.remove_message_handler(MessageType.DISCOVER_REQUEST)
         self.service_threads.remove_message_handler(MessageType.DISCOVER_REPLY)
         self.service_threads.remove_scheduled_task(self._timer_cb_discover)
         
-    #TODO #para detectar eventos desp si queremos saber cuando detectamos a alguien nuevo actualizar la tabla visual de la app
+  
     # -------------- API externa --------------
     def set_on_neighbors_changed(self, cb: Callable[[Dict[str, Dict[str, Any]]], None]):
         self.on_neighbors_changed = cb

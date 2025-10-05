@@ -1,14 +1,15 @@
 import base64
-from network_config import get_ether_type
+from src.prepare.network_config import get_ether_type
 from src.core.enums.enums import MessageType
 from src.core.schemas.frame_schemas import FrameSchema, HeaderSchema
 from src.file_transfer.schemas.send_ctx import FileSendCtxSchema
 
 
 class FileTransferHandler:
-    def __init__(self) -> None:
+    
+    def __init__(self, src_MAC: str) -> None:
         self._seq = 0
-        self._src_mac = get_src_mac() #TODO: ADD src mac in config 
+        self._src_mac = src_MAC 
 
     def _kv_bytes(self, **kwargs):
         # Serializa en líneas: key=value\n

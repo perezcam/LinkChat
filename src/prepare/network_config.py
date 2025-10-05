@@ -1,6 +1,6 @@
 import os, socket, pathlib
 
-DEFAULT_ETHER_TYPE = "0x88B5"  # string para parseo uniforme
+DEFAULT_ETHER_TYPE = "0x88B5"  
 
 VIRTUAL_PREFIXES = ("lo", "docker", "br-", "veth", "tun", "tap", "vmnet", "tailscale", "wg")
 
@@ -42,7 +42,6 @@ def _pick_interface() -> str | None:
     for group in (wired_up, wifi_up, any_up):
         if group:
             return group[0]
-    # Último recurso: la primera candidata aunque no esté UP
     return ifaces[0] if ifaces else None
 
 def get_interface() -> str:
@@ -58,14 +57,16 @@ def get_interface() -> str:
     return "eth0"
 
 def get_alias() -> str:
-    return os.environ.get("ALIAS") or socket.gethost
-    name()
+    # Prioriza envs; cae al hostname si no hay
+    return (
+        os.environ.get("ALIAS")
+        or os.environ.get("NODE_ALIAS")
+        or socket.gethostname()
+    )
 
 def get_runtime_config() -> dict:
     return {
-        "interface": get_interface(),
+        "interface": get_interface(),     
+        "ethertype": get_ether_type(),    
         "alias": get_alias(),
-        "ethertype": get_ether_type(),
     }
-
-

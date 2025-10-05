@@ -1,64 +1,114 @@
+volumes:
+  ipc: {}
+
+networks:
+  l2lab:
+    driver: bridge
+
 services:
   l2-a:
     build:
       context: .
       dockerfile: Dockerfile
-      network: host
-    image: linkchat-l2-discovery
-    command: python -u -m src.main     # <- -u desactiva buffering
+    image: linkchat-backend
+    command: python -u -m src.app_server
     environment:
       - INTERFACE=eth0
       - ETHER_TYPE=0x88B5
-      - ALIAS=Nodo-A
-      - UI_MODE=cli
-      - PYTHONUNBUFFERED=1             # <- redundante pero seguro
-    cap_add: [NET_RAW, NET_ADMIN]
-    dns: [1.1.1.1, 8.8.8.8]
-    tty: true                          # <- abre TTY real
-    stdin_open: true                   # <- deja STDIN abierto para input()
+      - NODE_ALIAS=Nodo-A
+      - IPC_SOCKET=/ipc/linkchat-Nodo-A.sock
+      - PYTHONUNBUFFERED=1
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    tty: true
+    stdin_open: true
     restart: unless-stopped
-    networks: [l2lab]
+    volumes:
+      - ./ipc:/ipc
+      - .:/app
+    networks:
+      - l2lab
+    healthcheck:
+      test: ["CMD-SHELL", "[ -S /ipc/linkchat-Nodo-A.sock ] || exit 1"]
+      interval: 2s
+      timeout: 1s
+      retries: 60
 
   l2-b:
     build:
       context: .
       dockerfile: Dockerfile
-      network: host
-    image: linkchat-l2-discovery
-    command: python -u -m src.main
+    image: linkchat-backend
+    command: python -u -m src.app_server
     environment:
       - INTERFACE=eth0
       - ETHER_TYPE=0x88B5
-      - ALIAS=Nodo-B
-      - UI_MODE=cli
+      - NODE_ALIAS=Nodo-B
+      - IPC_SOCKET=/ipc/linkchat-Nodo-B.sock
       - PYTHONUNBUFFERED=1
-    cap_add: [NET_RAW, NET_ADMIN]
-    dns: [1.1.1.1, 8.8.8.8]
-    restart: unless-stopped
-    networks: [l2lab]
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
     tty: true
     stdin_open: true
+    restart: unless-stopped
+    volumes:
+      - ./ipc:/ipc
+      - .:/app
+    networks:
+      - l2lab
+    healthcheck:
+      test: ["CMD-SHELL", "[ -S /ipc/linkchat-Nodo-B.sock ] || exit 1"]
+      interval: 2s
+      timeout: 1s
+      retries: 60
 
-  l2-c:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      network: host
-    image: linkchat-l2-discovery
-    command: python -u -m src.main
+  ui-a:
+    image: linkchat-ui
     environment:
-      - INTERFACE=eth0
-      - ETHER_TYPE=0x88B5
-      - ALIAS=Nodo-C
-      - UI_MODE=cli
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=/root/.Xauthority
+      - SDL_VIDEODRIVER=x11
+      - QT_X11_NO_MITSHM=1
+      - IPC_SOCKET=/ipc/linkchat-Nodo-A.sock
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
       - PYTHONUNBUFFERED=1
-    cap_add: [NET_RAW, NET_ADMIN]
-    dns: [1.1.1.1, 8.8.8.8]
-    restart: unless-stopped
-    networks: [l2lab]
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - /home/camilo-perez/.Xauthority:/root/.Xauthority:ro   # <- ruta del host, fija
+      - ./ipc:/ipc:ro
+      - ./ui:/app/
+    depends_on:
+      l2-a:
+        condition: service_healthy
     tty: true
     stdin_open: true
+    restart: unless-stopped
 
-networks:
-  l2lab:
-    driver: bridge
+  ui-b:
+    image: linkchat-ui
+    environment:
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=/root/.Xauthority
+      - SDL_VIDEODRIVER=x11
+      - QT_X11_NO_MITSHM=1
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - IPC_SOCKET=/ipc/linkchat-Nodo-B.sock
+      - MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - /home/camilo-perez/.Xauthority:/root/.Xauthority:ro   
+      - ./ipc:/ipc:ro
+      - ./ui:/app/
+    depends_on:
+      l2-a:
+        condition: service_healthy
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
+    
+    networks:
+      - l2lab

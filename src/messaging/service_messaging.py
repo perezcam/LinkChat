@@ -7,7 +7,7 @@ from src.core.schemas.frame_schemas import FrameSchema, HeaderSchema
 from src.prepare.network_config import get_ether_type
 
 class Messaging:
-    def __init__(self, threads: ThreadManager, neighbors_ref: Dict[str, Dict]):
+    def __init__(self, threads: ThreadManager, neighbors_ref: Dict[str, Dict],alias: str):
         self.threads = threads
         self.neighbors = neighbors_ref
         self._seq = 0
