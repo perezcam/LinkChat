@@ -115,7 +115,7 @@ services:
       - ./ui:/app/
       - /:/host
     depends_on:
-      l2-a:
+      l2-b:
         condition: service_healthy
     tty: true
     stdin_open: true

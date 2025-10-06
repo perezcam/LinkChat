@@ -165,6 +165,7 @@ class AppServer:
                     chunk_size = int(os.environ.get("CHUNK_SIZE", "900"))
                     self.file_sender = FileSender(self.th_mgr, chunk_size)
 
+                
                 sent_list = self.file_sender.send_folder(folder_path=folder, dst_mac=dst) 
                 files_resp = []
                 for file_id, rel in sent_list:

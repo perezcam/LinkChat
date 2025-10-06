@@ -31,7 +31,7 @@ class FileSender:
                 full_path = os.path.join(root, fname)
                 rel_path = self._to_posix_relative(full_path, folder_path)
                 file_id = self.send_file(full_path, dst_mac, rel_path)
-
+                print("estos son full_path: ",full_path," relative path: ",rel_path," y el folderPath: ",folder_path)
                 ctx = self.service_threads.get_ctx_by_id(file_id)
                 while ctx and not ctx.finished:
                     time.sleep(0.05)
