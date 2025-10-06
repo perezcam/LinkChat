@@ -131,11 +131,12 @@ class ThreadManager:
             if ctx.finished:
                 self._ctx_by_id.pop(ctx.file_id)
                 continue
-            with ctx.lock:
-                self._retransfer_expired(ctx, now)
+            if ctx.meta_acked:
+                with ctx.lock:
+                    self._retransfer_expired(ctx, now)
 
-                if not ctx.finished:
-                    self._refill_window(ctx)
+                    if not ctx.finished:
+                        self._refill_window(ctx)
             
             # Completado
             if ctx.last_acked + 1 >= ctx.total_chunks and not ctx.finished:
@@ -143,6 +144,7 @@ class ThreadManager:
                 self.queue_frame_for_sending(frame)
                 with ctx.lock:
                     ctx.finished = True     
+                logging.debug("[TX] complete window file_id=%s last_acked=%d total=%d", ctx.file_id, ctx.last_acked, ctx.total_chunks)
 
     def _mark_inflight(self, ctx : FileSendCtxSchema, idx: int, retries: int = 0) :
         ctx.inflight[idx] = (time.time(), retries) 
@@ -157,20 +159,35 @@ class ThreadManager:
                         status="error", 
                         reason="timeout"
                     )
+                    logging.debug(
+                        "[RTX] retransmit idx=%d file_id=%s retry=%d timeout=%.2fs",
+                        idx, ctx.file_id, retries + 1, ctx.timeout_s
+                    )
                     self.queue_frame_for_sending(frame)
                     ctx.finished = True
                     break
                 frame : FrameSchema = self.file_transfer_handler.get_data_chunk(ctx, idx)
                 self.queue_frame_for_sending(frame)
                 self._mark_inflight(ctx, idx, retries=retries+1)
+                logging.debug(
+                    "[RTX] retransmit idx=%d file_id=%s retry=%d timeout=%.2fs",
+                    idx, ctx.file_id, retries + 1, ctx.timeout_s
+                )
 
     def _refill_window(self, ctx: FileSendCtxSchema):
         while len(ctx.inflight) < ctx.window_size and ctx.next_to_send < ctx.total_chunks:
             idx = ctx.next_to_send
             frame : FrameSchema = self.file_transfer_handler.get_data_chunk(ctx, idx)
+
+            logging.debug(
+                "[TX] send chunk idx=%d file_id=%s win=%d inflight=%d next_to_send->%d",
+                idx, ctx.file_id, ctx.window_size, len(ctx.inflight), ctx.next_to_send + 1
+            )
+
             self.queue_frame_for_sending(frame)
             self._mark_inflight(ctx, idx)
             ctx.next_to_send += 1
+
 
     def start(self):
         if self._started:

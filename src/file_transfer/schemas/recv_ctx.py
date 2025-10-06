@@ -13,15 +13,21 @@ class FileRcvCtxSchema:
     chunk_size: int
     total_chunks: int
     temp_path: str               # ruta al archivo temporal
+    dest_path: str
     received: Set[int] = field(default_factory=set)
     next_needed: int = 0
     finished: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
 
-    #TODO: borrar esto despues!, definir el path 
-    @staticmethod
-    def make_temp_path(file_id: str) -> str:
-        # un nombre simple predecible; puedes usar tempfile.NamedTemporaryFile si prefieres aleatorio
-        base = tempfile.gettempdir()
-        return os.path.join(base, f"{file_id}.part")
+
+def debug_snapshot(self) -> str:
+    rcvd = len(self.received)
+    first_missing = self.next_needed
+    return (
+        f"[RECVCTX id={self.file_id}] "
+        f"next_needed={self.next_needed} "
+        f"received={rcvd}/{self.total_chunks} "
+        f"finished={self.finished} "
+        f"dest='{self.dest_path}' "
+    )
