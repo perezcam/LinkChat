@@ -11,14 +11,14 @@ class TransferState:
     id: str                  # tid local (ej. "tx-...")
     kind: str                # "tx" | "rx"
     name: str
-    size: int                # bytes totales (0 si aún desconocido)
-    done: int = 0            # bytes completados (aprox si no hay info exacta)
+    size: int                # bytes totales
+    done: int = 0            # bytes completados
     status: str = "pending"  # pending|running|done|error|canceled
     peer: Optional[str] = None      # mac peer
     server_id: Optional[str] = None # file_id emitido por el servidor
     acked: Optional[int] = None     # chunks
     total: Optional[int] = None     # chunks
-    progress: Optional[float] = None  # 0..1, si viene del servidor
+    progress: Optional[float] = None  # 0..1, 
 
 
 @dataclass
@@ -46,8 +46,32 @@ class FileService:
 
     # ---------- API de envío ----------
     def send_path(self, dst_mac: str, path: str):
-        """Alias para compatibilidad con app.py."""
+        """Si es carpeta -> folder_send; si es archivo -> file_send."""
+        if os.path.isdir(path):
+            return self.send_folder(dst_mac, path)
         return self.send_file(dst_mac, path)
+
+    def send_folder(self, dst_mac: str, folder_path: str):
+        """
+        Envía una carpeta completa (secuencial) usando el comando IPC 'folder_send'.
+        No se crea TransferState único para la carpeta: cada archivo generará sus
+        propios eventos file_tx_* que este servicio ya maneja.
+        """
+        if not os.path.isdir(folder_path):
+            raise ValueError(f"Ruta no es carpeta: {folder_path}")
+
+        tid = f"fx-{int(time.time()*1000)}" 
+        payload = {"type": "folder_send", "dst": dst_mac, "folder": folder_path, "client_tid": tid}
+        fut = self.bridge.send_cmd_threadsafe(payload)
+
+        def _done(f):
+            try:
+                _ = f.result()
+            except Exception:
+                pass
+        fut.add_done_callback(_done)
+
+        return tid
 
     def send_file(self, dst_mac: str, path: str):
         """

@@ -26,7 +26,7 @@ except Exception:
 
 DEFAULT_SOCK_DIR = os.environ.get("IPC_DIR", "/ipc")
 DEFAULT_SOCK_NAME = os.environ.get("IPC_NAME", "linkchat")
-DEFAULT_BASE_DIR = os.environ.get("BASE_DIR")
+DEFAULT_BASE_DIR = os.environ.get("BASE_DIR","/shared")
 
 
 def _neighbors_snapshot(neighbors: Dict[str, Dict[str, Any]]):
@@ -142,7 +142,7 @@ class AppServer:
 
                 if not self.file_sender:
                     chunk_size = int(os.environ.get("CHUNK_SIZE", "900"))
-                    self.file_sender = FileSender(self.th_mgr, chunk_size=chunk_size) 
+                    self.file_sender = FileSender(self.th_mgr, chunk_size) 
                 file_id = self.file_sender.send_file(path=path, dst_mac=dst)
                 meta = {
                     "dst": dst,
@@ -154,6 +154,41 @@ class AppServer:
                 self._emit_event({"type": "file_tx_started", "file_id": file_id, "dst": dst, "name": meta["name"]})
                 self._ensure_file_poller()
                 return {"ok": True, "file_id": file_id}
+
+            if t == "folder_send":
+                dst = cmd.get("dst") or cmd.get("dst_mac")
+                folder = cmd.get("folder") or cmd.get("path") 
+                if not (dst and folder and os.path.isdir(folder)):
+                    return {"ok": False, "error": "missing dst/folder or not a directory"}
+
+                if not self.file_sender:
+                    chunk_size = int(os.environ.get("CHUNK_SIZE", "900"))
+                    self.file_sender = FileSender(self.th_mgr, chunk_size)
+
+                sent_list = self.file_sender.send_folder(folder_path=folder, dst_mac=dst) 
+                files_resp = []
+                for file_id, rel in sent_list:
+                    path_abs = os.path.join(folder, rel)
+                    name = os.path.basename(rel) or os.path.basename(path_abs)
+                    meta = {
+                        "dst": dst,
+                        "path": path_abs,
+                        "name": name,
+                        "rel": rel,        
+                        "t0": time.time(),
+                    }
+                    self._files_out[file_id] = meta
+                    self._emit_event({
+                        "type": "file_tx_started",
+                        "file_id": file_id,
+                        "dst": dst,
+                        "name": name,
+                        "rel": rel, 
+                    })
+                    files_resp.append({"file_id": file_id, "rel": rel})
+
+                self._ensure_file_poller()
+                return {"ok": True, "files": files_resp}
 
             return {"ok": False, "error": f"unknown_command:{t}"}
         except Exception as e:
@@ -227,17 +262,18 @@ class AppServer:
                         "file_id": file_id,
                         "dst": meta["dst"],
                         "name": meta["name"],
+                        "rel": meta.get("rel"),     # <<< extra para carpeta
                         "acked": acked,
                         "total": total,
                         "progress": prog,
                     })
                     if getattr(ctx, "finished", False):
-                        print("COPIADO EN ",DEFAULT_BASE_DIR)
                         self._emit_event({
                             "type": "file_tx_finished",
                             "file_id": file_id,
                             "dst": meta["dst"],
                             "name": meta["name"],
+                            "rel": meta.get("rel"),   # <<< extra para carpeta
                             "status": "ok",
                         })
                         self._files_out.pop(file_id, None)
@@ -324,14 +360,14 @@ class AppServer:
 
 
 def main():
-    alias = os.environ.get("ALIAS", "Nodo-A")
-    sock_path = (
-        os.environ.get("IPC_SOCKET")
-        or os.environ.get("IPC_SOCKET_PATH")
-        or _resolve_socket_path(alias)
-    )
-    server = AppServer(socket_path=sock_path)
-    server.run_forever()
+        alias = os.environ.get("ALIAS", "Nodo-A")
+        sock_path = (
+            os.environ.get("IPC_SOCKET")
+            or os.environ.get("IPC_SOCKET_PATH")
+            or _resolve_socket_path(alias)
+        )
+        server = AppServer(socket_path=sock_path)
+        server.run_forever()
 
 
 if __name__ == "__main__":

@@ -97,6 +97,7 @@ class FileReceiver:
         total = int(kv.get("total", "0"))
         rel_path = self._sanitize_relative_path(kv.get("path", ""))
 
+        print("ERROR BAD META NAME: ",name,"size: ",size,"chunk_size: ",chunk_size)
         if not file_id or not name or not size or not chunk_size or not total:
             # Meta incompleta: responde error temprano
             self._send_fin(file_id or "unknown", frame.src_mac, "error", "bad_meta")

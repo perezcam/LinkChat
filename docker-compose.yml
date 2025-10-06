@@ -18,7 +18,7 @@ services:
       - NODE_ALIAS=Mauricio
       - IPC_SOCKET=/ipc/linkchat-Mauricio.sock
       - PYTHONUNBUFFERED=1
-      - BASE_DIR=/app
+      - BASE_DIR=/home/camilo-perez/LINKCHAT/
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -26,6 +26,7 @@ services:
     stdin_open: true
     restart: unless-stopped
     volumes:
+      - ./shared:/shared
       - ./ipc:/ipc
       - .:/app
       - /:/host:ro
@@ -49,7 +50,7 @@ services:
       - NODE_ALIAS=Camilo
       - IPC_SOCKET=/ipc/linkchat-Camilo.sock
       - PYTHONUNBUFFERED=1
-      - BASE_DIR=/host/home
+      - BASE_DIR=/shared
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -57,9 +58,10 @@ services:
     stdin_open: true
     restart: unless-stopped
     volumes:
+      - ./shared:/shared
       - ./ipc:/ipc
       - .:/app
-      - /:/host:ro
+      - /:/host
       
     networks:
       - l2lab
@@ -81,11 +83,12 @@ services:
       - MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
       - PYTHONUNBUFFERED=1
     volumes:
+      - ./shared:/shared
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
       - /home/camilo-perez/.Xauthority:/root/.Xauthority:ro   
       - ./ipc:/ipc:ro
       - ./ui:/app/
-      - /:/host:ro
+      - /:/host
     depends_on:
       l2-a:
         condition: service_healthy
@@ -105,11 +108,12 @@ services:
       - MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
       - PYTHONUNBUFFERED=1
     volumes:
+      - ./shared:/shared
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
       - /home/camilo-perez/.Xauthority:/root/.Xauthority:ro   
       - ./ipc:/ipc:ro
-      - ./ui:/host/home
-      - /:/host:ro
+      - ./ui:/app/
+      - /:/host
     depends_on:
       l2-a:
         condition: service_healthy
