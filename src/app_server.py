@@ -26,6 +26,7 @@ except Exception:
 
 DEFAULT_SOCK_DIR = os.environ.get("IPC_DIR", "/ipc")
 DEFAULT_SOCK_NAME = os.environ.get("IPC_NAME", "linkchat")
+DEFAULT_BASE_DIR = os.environ.get("BASE_DIR")
 
 
 def _neighbors_snapshot(neighbors: Dict[str, Dict[str, Any]]):
@@ -231,6 +232,7 @@ class AppServer:
                         "progress": prog,
                     })
                     if getattr(ctx, "finished", False):
+                        print("COPIADO EN ",DEFAULT_BASE_DIR)
                         self._emit_event({
                             "type": "file_tx_finished",
                             "file_id": file_id,
@@ -269,7 +271,7 @@ class AppServer:
                 self.th_mgr = ThreadManager(socket_manager=sock, file_transfer_handler=self.file_transfer)
                 self.th_mgr.start()
 
-                self.file_receiver = FileReceiver(self.th_mgr)
+                self.file_receiver = FileReceiver(self.th_mgr,DEFAULT_BASE_DIR)
 
                 # Discovery + Messaging
                 self.discovery = Discovery(service_threads=self.th_mgr, alias=self.alias, interval_seconds=5.0)
@@ -316,14 +318,12 @@ class AppServer:
             if self.ipc and self._ipc_loop:
                 with contextlib.suppress(Exception):
                     fut = asyncio.run_coroutine_threadsafe(self.ipc.stop(), self._ipc_loop)
-                    # opcional: fut.result(timeout=2)
 
     def stop(self):
         self._stop_evt.set()
 
 
 def main():
-    # Resuelve alias e IPC_SOCKET de manera consistente
     alias = os.environ.get("ALIAS", "Nodo-A")
     sock_path = (
         os.environ.get("IPC_SOCKET")

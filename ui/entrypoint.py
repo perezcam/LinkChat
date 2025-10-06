@@ -21,41 +21,38 @@ async def main():
     )
 
     sock = os.environ.get("IPC_SOCKET", "/ipc/linkchat-Nodo-A.sock")
-    
     logging.info("Iniciando UI (IPC_SOCKET=%s)", sock)
 
     # --- IPC Bridge ---
     bridge = UDSBridge(sock)
     logging.info("[IPC] Conectando a %s ...", sock)
     await bridge.start()
-    print("saliendo de start")
     logging.info("[IPC] Conexión establecida y readerLoop en marcha.")
 
     # --- Servicios de la UI ---
     roster = RosterService(bridge)
     chat   = ChatService(bridge)
-    files  = FileService(bridge)
+    files  = FileService(bridge) 
 
     # --- Event Pump y suscripciones ---
     pump = EventPump()
     pump.subscribe("neighbors_changed", roster.on_neighbors_changed)
     pump.subscribe("chat",               chat.on_chat)
-    pump.subscribe("file_progress",      files.on_file_progress)
-    pump.subscribe("file_complete",      files.on_file_complete)
-    pump.subscribe("file_offer",         files.on_file_offer)
 
-    # Fallback para ver TODO lo que llega aunque no tenga handler
-    pump.fallback(lambda evt: logging.info("[UI] evento no manejado: %s", evt))
+    # Fallback (opcional): ignora respuestas sin "type" (p.ej. {"ok": true})
+    pump.fallback(lambda ev: None if (isinstance(ev, dict) and "type" not in ev)
+                  else logging.info("[UI] evento no manejado: %s", ev))
 
-    # --- Bootstrap de estado inicial (pide vecinos) ---
+    # --- Bootstrap de estado inicial ---
     await roster.bootstrap()
     logging.info("[UI] Bootstrap enviado (neighbors_get).")
 
-    # Ping opcional para comprobar ida/vuelta (aparecerá como evento)
+    # Ping opcional
     await bridge.send_cmd({"type": "ping"})
 
-    # --- Arrancar la app principal (main loop hace pump de eventos) ---
+    # --- Arrancar la app principal (Pygame corre en otro hilo) ---
     await asyncio.to_thread(run, bridge, pump, roster, chat, files)
+
 
 if __name__ == "__main__":
     try:

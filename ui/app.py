@@ -56,6 +56,14 @@ def run(
     manager = pygame_gui.UIManager(screen.get_size())
     picker = AttachmentPicker(manager)
 
+    # --- suscribir FileService a eventos de transferencia ---
+    if hasattr(files, "register_event_handlers"):
+        files.register_event_handlers(pump)
+
+    # --- (opcional) ignorar eventos sin "type" ---
+    if hasattr(pump, "fallback"):
+        pump.fallback(lambda ev: None if (isinstance(ev, dict) and "type" not in ev) else print("[UI] evento no manejado:", ev))
+
     sidebar = Sidebar()
     header = ChatHeader()
     messages = MessagesView()

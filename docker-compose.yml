@@ -15,9 +15,10 @@ services:
     environment:
       - INTERFACE=eth0
       - ETHER_TYPE=0x88B5
-      - NODE_ALIAS=Nodo-A
-      - IPC_SOCKET=/ipc/linkchat-Nodo-A.sock
+      - NODE_ALIAS=Mauricio
+      - IPC_SOCKET=/ipc/linkchat-Mauricio.sock
       - PYTHONUNBUFFERED=1
+      - BASE_DIR=/app
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -27,10 +28,11 @@ services:
     volumes:
       - ./ipc:/ipc
       - .:/app
+      - /:/host:ro
     networks:
       - l2lab
     healthcheck:
-      test: ["CMD-SHELL", "[ -S /ipc/linkchat-Nodo-A.sock ] || exit 1"]
+      test: ["CMD-SHELL", "[ -S /ipc/linkchat-Mauricio.sock ] || exit 1"]
       interval: 2s
       timeout: 1s
       retries: 60
@@ -44,9 +46,10 @@ services:
     environment:
       - INTERFACE=eth0
       - ETHER_TYPE=0x88B5
-      - NODE_ALIAS=Nodo-B
-      - IPC_SOCKET=/ipc/linkchat-Nodo-B.sock
+      - NODE_ALIAS=Camilo
+      - IPC_SOCKET=/ipc/linkchat-Camilo.sock
       - PYTHONUNBUFFERED=1
+      - BASE_DIR=/host/home
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -56,10 +59,12 @@ services:
     volumes:
       - ./ipc:/ipc
       - .:/app
+      - /:/host:ro
+      
     networks:
       - l2lab
     healthcheck:
-      test: ["CMD-SHELL", "[ -S /ipc/linkchat-Nodo-B.sock ] || exit 1"]
+      test: ["CMD-SHELL", "[ -S /ipc/linkchat-Camilo.sock ] || exit 1"]
       interval: 2s
       timeout: 1s
       retries: 60
@@ -71,15 +76,16 @@ services:
       - XAUTHORITY=/root/.Xauthority
       - SDL_VIDEODRIVER=x11
       - QT_X11_NO_MITSHM=1
-      - IPC_SOCKET=/ipc/linkchat-Nodo-A.sock
+      - IPC_SOCKET=/ipc/linkchat-Mauricio.sock
       - LIBGL_ALWAYS_SOFTWARE=1
       - MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
       - PYTHONUNBUFFERED=1
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
-      - /home/camilo-perez/.Xauthority:/root/.Xauthority:ro   # <- ruta del host, fija
+      - /home/camilo-perez/.Xauthority:/root/.Xauthority:ro   
       - ./ipc:/ipc:ro
       - ./ui:/app/
+      - /:/host:ro
     depends_on:
       l2-a:
         condition: service_healthy
@@ -95,14 +101,15 @@ services:
       - SDL_VIDEODRIVER=x11
       - QT_X11_NO_MITSHM=1
       - LIBGL_ALWAYS_SOFTWARE=1
-      - IPC_SOCKET=/ipc/linkchat-Nodo-B.sock
+      - IPC_SOCKET=/ipc/linkchat-Camilo.sock
       - MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
       - PYTHONUNBUFFERED=1
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
       - /home/camilo-perez/.Xauthority:/root/.Xauthority:ro   
       - ./ipc:/ipc:ro
-      - ./ui:/app/
+      - ./ui:/host/home
+      - /:/host:ro
     depends_on:
       l2-a:
         condition: service_healthy
