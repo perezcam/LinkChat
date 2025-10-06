@@ -15,6 +15,8 @@ from src.core.managers.service_threads import ThreadManager
 from src.discover.discover import Discovery
 from src.prepare.network_config import get_runtime_config
 from src.file_transfer.handlers.file_transfer_handler import FileTransferHandler
+from src.file_transfer.file_sender import FileSender
+from src.file_transfer.file_receiver import FileReceiver
 
 try:
     from ipc.ipc_server import IPCServer  
@@ -87,6 +89,11 @@ class AppServer:
         self.messaging: Optional[Messaging] = None
         self.file_transfer: Optional[FileTransferHandler] = None
 
+        self.file_sender: Optional[FileSender] = None
+        self.file_receiver: Optional[FileReceiver] = None
+        self._files_out: Dict[str, Dict[str, Any]] = {}
+        self._file_poll_thread: Optional[threading.Thread] = None
+
         # IPC
         self.ipc: Optional[IPCServer] = None
         self._ipc_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -126,11 +133,26 @@ class AppServer:
                 return _neighbors_snapshot(self.discovery.neighbors)
 
             if t == "file_send":
-                # esperado: {"type":"file_send","dst":"aa:bb:...","path":"/path/file"}
-                dst = cmd.get("dst"); path = cmd.get("path")
+                # esperado: {"type":"file_send","dst":"aa:bb:...","path":"/abs/path/file"}
+                dst = cmd.get("dst") or cmd.get("dst_mac")
+                path = cmd.get("path")
                 if not (dst and path and os.path.exists(path)):
-                    return {"ok": False, "error": "missing dst/path"}
-                return {"ok": False, "error": "file_send_not_implemented"}
+                    return {"ok": False, "error": "missing dst/path or not exists"}
+
+                if not self.file_sender:
+                    chunk_size = int(os.environ.get("CHUNK_SIZE", "900"))
+                    self.file_sender = FileSender(self.th_mgr, chunk_size=chunk_size) 
+                file_id = self.file_sender.send_file(path=path, dst_mac=dst)
+                meta = {
+                    "dst": dst,
+                    "path": path,
+                    "name": os.path.basename(path),
+                    "t0": time.time(),
+                }
+                self._files_out[file_id] = meta
+                self._emit_event({"type": "file_tx_started", "file_id": file_id, "dst": dst, "name": meta["name"]})
+                self._ensure_file_poller()
+                return {"ok": True, "file_id": file_id}
 
             return {"ok": False, "error": f"unknown_command:{t}"}
         except Exception as e:
@@ -183,6 +205,45 @@ class AppServer:
             text = ""
         self._emit_event({"type": "chat", "src": src_mac, "text": text})
 
+    def _ensure_file_poller(self):
+        if self._file_poll_thread and self._file_poll_thread.is_alive():
+            return
+        self._file_poll_thread = threading.Thread(target=self._file_progress_poller, daemon=True)
+        self._file_poll_thread.start()
+
+    def _file_progress_poller(self):
+        while not self._stop_evt.is_set():
+            try:
+                for file_id, meta in list(self._files_out.items()):
+                    ctx = self.th_mgr.get_ctx_by_id(file_id) if self.th_mgr else None
+                    if not ctx:
+                        continue
+                    acked = int(ctx.last_acked) + 1
+                    total = int(ctx.total_chunks)
+                    prog = (acked / total) if total else 0.0
+                    self._emit_event({
+                        "type": "file_tx_progress",
+                        "file_id": file_id,
+                        "dst": meta["dst"],
+                        "name": meta["name"],
+                        "acked": acked,
+                        "total": total,
+                        "progress": prog,
+                    })
+                    if getattr(ctx, "finished", False):
+                        self._emit_event({
+                            "type": "file_tx_finished",
+                            "file_id": file_id,
+                            "dst": meta["dst"],
+                            "name": meta["name"],
+                            "status": "ok",
+                        })
+                        self._files_out.pop(file_id, None)
+            except Exception:
+                logging.exception("file_progress_poller error")
+            finally:
+                time.sleep(0.2)
+
     # --------------- Lifecycle ---------------
     def run_forever(self):
         """Arranca todo y bloquea hasta SIGINT/SIGTERM o stop()"""
@@ -204,10 +265,11 @@ class AppServer:
                     self.interface, self.ethertype, sock.mac
                 )
 
-                # Handlers/threads
-                self.file_transfer = FileTransferHandler(src_MAC=sock.mac)
+                self.file_transfer = FileTransferHandler(sock.mac)
                 self.th_mgr = ThreadManager(socket_manager=sock, file_transfer_handler=self.file_transfer)
                 self.th_mgr.start()
+
+                self.file_receiver = FileReceiver(self.th_mgr)
 
                 # Discovery + Messaging
                 self.discovery = Discovery(service_threads=self.th_mgr, alias=self.alias, interval_seconds=5.0)
