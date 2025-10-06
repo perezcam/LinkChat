@@ -1,4 +1,5 @@
 import base64
+
 from src.prepare.network_config import get_ether_type
 from src.core.enums.enums import MessageType
 from src.core.schemas.frame_schemas import FrameSchema, HeaderSchema
@@ -6,10 +7,9 @@ from src.file_transfer.schemas.send_ctx import FileSendCtxSchema
 
 
 class FileTransferHandler:
-    
-    def __init__(self, src_MAC: str) -> None:
+    def __init__(self, src_mac: str) -> None:
         self._seq = 0
-        self._src_mac = src_MAC 
+        self._src_mac = src_mac 
 
     def _kv_bytes(self, **kwargs):
         # Serializa en líneas: key=value\n
@@ -32,7 +32,7 @@ class FileTransferHandler:
             f.seek(idx * ctx.chunk_size)
             data = f.read(ctx.chunk_size)
         #Convert it to string
-        b64 = base64.b64encode(data).decode("ascii")
+        b64 = base64.b64encode(data).decode("ascii") #TODO: Cambiar esto 
         payload = self._kv_bytes(
             file_id=ctx.file_id,
             idx=idx,
@@ -55,4 +55,18 @@ class FileTransferHandler:
             ),
             payload=payload
         )
+    
+    def get_meta_frame(self, ctx: FileSendCtxSchema, file_name: str, rel_path: str | None = None) -> FrameSchema:
+        kv = dict(
+            file_id=ctx.file_id,
+            name=file_name,
+            size=ctx.size,
+            sha256=ctx.hash_sha256_hex,
+            chunk_size=ctx.chunk_size,
+            total=ctx.total_chunks
+        )
+        if rel_path:
+            kv["path"] = rel_path
+        payload = self._kv_bytes(**kv)
+        return self.get_frame(ctx.dst_mac, MessageType.FILE_META, payload)
     
