@@ -30,7 +30,6 @@ class IPCServer:
         # Asegurar el directorio
         os.makedirs(os.path.dirname(self.socket_path), exist_ok=True)
 
-        # Si existe algo en la ruta, limpiarlo con cuidado
         try:
             st = os.lstat(self.socket_path)
             if stat.S_ISSOCK(st.st_mode):
@@ -124,7 +123,6 @@ class IPCServer:
                         raise ValueError("El comando debe ser un objeto JSON")
                 except Exception as e:
                     logging.exception(f"[IPC] JSON inválido: {e}")
-                    # Opcional: responder error al cliente
                     err = {"ok": False, "error": "bad_json"}
                     writer.write((json.dumps(err) + "\n").encode("utf-8"))
                     await writer.drain()
@@ -137,7 +135,6 @@ class IPCServer:
                         await writer.drain()
                 except Exception as e:
                     logging.exception(f"[IPC] Error en on_cmd: {e}")
-                    # Opcional: responde error para no dejarlo colgado
                     err = {"ok": False, "error": "server_exception"}
                     writer.write((json.dumps(err) + "\n").encode("utf-8"))
                     await writer.drain()

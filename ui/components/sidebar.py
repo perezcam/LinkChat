@@ -105,7 +105,7 @@ class Sidebar:
     def draw(self, surf, L, contacts):
         r = L["sidebar"]; pad = L["pad"]; f = L["fonts"]
         rounded_rect(surf, r, CLR["sidebar"], 0)
-        text(surf, "EnRedaTe", f["h2"], CLR["text"], (r.x+pad, r.y+pad))
+        text(surf, "EnRedate", f["h2"], CLR["text"], (r.x+pad, r.y+pad))
 
         search_r = self._search_rect(L)
         rounded_rect(surf, search_r, CLR["accent"], L["r_sm"])

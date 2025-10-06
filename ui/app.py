@@ -1,4 +1,5 @@
 import pygame as pg
+import pygame_gui
 from datetime import datetime
 from typing import List, Dict
 
@@ -14,6 +15,7 @@ from components.sidebar import Sidebar
 from components.header import ChatHeader
 from components.messages import MessagesView
 from components.input_bar import InputBar
+from components.attachment_picker import AttachmentPicker
 from state.models import ChatMessage, Contact
 
 
@@ -51,6 +53,9 @@ def run(
     screen = init_window()
     clock = pg.time.Clock()
 
+    manager = pygame_gui.UIManager(screen.get_size())
+    picker = AttachmentPicker(manager)
+
     sidebar = Sidebar()
     header = ChatHeader()
     messages = MessagesView()
@@ -59,6 +64,7 @@ def run(
     running = True
     while running:
         dt = clock.tick(60)
+        time_delta = dt / 1000.0
 
         # ----------------- INPUT -----------------
         for e in pg.event.get():
@@ -69,21 +75,45 @@ def run(
                 running = False
                 break
             else:
+                manager.process_events(e)
+                picker.process_event(e)
+
+                #sidebar selección de contacto
                 try:
                     w, h = screen.get_size()
                     L = compute_layout(w, h)
-                    maybe_mac = sidebar.handle_event(e, L, roster.contacts) 
+                    maybe_mac = sidebar.handle_event(e, L, roster.contacts)
                     if maybe_mac:
                         roster.select(maybe_mac)
                 except TypeError:
                     pass
 
-                msg = inputbar.handle_event(e)
-                if msg and roster.selected_mac:
-                    chat.send_text(roster.selected_mac, msg)
+            res = inputbar.handle_event(e)
+
+            if not res:
+                pass  
+            elif isinstance(res, tuple) and len(res) == 2:
+                kind, payload = res
+
+                if kind == "attach":
+                    picker.open()
+
+                elif kind == "send" and payload and roster.selected_mac:
+                    chat.send_text(roster.selected_mac, payload.strip())
+
+                    attachments = picker.take_attachments()
+                    for path in attachments:
+                        try:
+                            if hasattr(files, "send_path"):
+                                files.send_path(roster.selected_mac, path)
+                            elif hasattr(files, "send"):
+                                files.send(roster.selected_mac, path)
+                            else:
+                                chat.send_text(roster.selected_mac, f"[adjunto seleccionado] {path}")
+                        except Exception as ex:
+                            chat.send_text(roster.selected_mac, f"[error adjunto] {path}: {ex}")
 
         # ----------------- EVENTOS (BACKEND → UI) -----------------
-        # Drenar y despachar eventos a los servicios .
         pump.pump(bridge, max_events=300)
 
         # ----------------- RENDER -----------------
@@ -109,6 +139,9 @@ def run(
         messages.draw(screen, L, [m.__dict__ for m in current_msgs])
 
         inputbar.draw(screen, L)
+
+        manager.update(time_delta)
+        manager.draw_ui(screen)
 
         pg.display.flip()
 
