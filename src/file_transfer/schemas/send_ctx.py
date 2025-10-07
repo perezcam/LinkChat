@@ -21,5 +21,22 @@ class FileSendCtxSchema:
     inflight: Dict[int, Tuple[float, int]] = field(default_factory=dict)
     acked: Set[int] = field(default_factory=set)
     finished: bool = False
+    meta_acked: bool = False
+    meta_sent_ts: float = 0.0
 
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False) #mutex
+
+
+
+    def debug_snapshot(self) -> str:
+        inflight = sorted(self.inflight.keys())
+        return (
+            f"[SENDCTX id={self.file_id}] "
+            f"next_to_send={self.next_to_send} "
+            f"last_acked={self.last_acked} "
+            f"inflight={inflight} "
+            f"acked_count={len(self.acked)}/{self.total_chunks} "
+            f"win={self.window_size} "
+            f"timeout={self.timeout_s}s "
+            f"retries={[self.inflight[i][1] for i in inflight]}"
+    )

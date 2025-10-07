@@ -1,28 +1,125 @@
-services:
-  l2-a:
-    build: .
-    image: linkchat-l2-discovery
-    command: python  src/main.py
-    environment:
-      - INTERFACE=eth0
-      - ETHER_TYPE=0x88B5
-      - ALIAS=Nodo-A
-    cap_add:
-      - NET_RAW
-    networks: [l2lab]
-
-  l2-b:
-    build: .
-    image: linkchat-l2-discovery
-    command: python  src/main.py
-    environment:
-      - INTERFACE=eth0
-      - ETHER_TYPE=0x88B5
-      - ALIAS=Nodo-B
-    cap_add:
-      - NET_RAW
-    networks: [l2lab]
+volumes:
+  ipc: {}
 
 networks:
   l2lab:
     driver: bridge
+
+services:
+  l2-a:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: linkchat-backend
+    command: python -u -m src.app_server
+    environment:
+      - INTERFACE=eth0
+      - ETHER_TYPE=0x88B5
+      - NODE_ALIAS=Mauricio
+      - IPC_SOCKET=/ipc/linkchat-Mauricio.sock
+      - PYTHONUNBUFFERED=1
+      - BASE_DIR=/home/camilo-perez/LINKCHAT/
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
+    volumes:
+      - ./shared:/shared
+      - ./ipc:/ipc
+      - .:/app
+      - /:/host:ro
+    networks:
+      - l2lab
+    healthcheck:
+      test: ["CMD-SHELL", "[ -S /ipc/linkchat-Mauricio.sock ] || exit 1"]
+      interval: 2s
+      timeout: 1s
+      retries: 60
+
+  l2-b:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: linkchat-backend
+    command: python -u -m src.app_server
+    environment:
+      - INTERFACE=eth0
+      - ETHER_TYPE=0x88B5
+      - NODE_ALIAS=Camilo
+      - IPC_SOCKET=/ipc/linkchat-Camilo.sock
+      - PYTHONUNBUFFERED=1
+      - BASE_DIR=/shared
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
+    volumes:
+      - ./shared:/shared
+      - ./ipc:/ipc
+      - .:/app
+      - /:/host
+      
+    networks:
+      - l2lab
+    healthcheck:
+      test: ["CMD-SHELL", "[ -S /ipc/linkchat-Camilo.sock ] || exit 1"]
+      interval: 2s
+      timeout: 1s
+      retries: 60
+
+  ui-a:
+    image: linkchat-ui
+    environment:
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=/root/.Xauthority
+      - SDL_VIDEODRIVER=x11
+      - QT_X11_NO_MITSHM=1
+      - IPC_SOCKET=/ipc/linkchat-Mauricio.sock
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./shared:/shared
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - /home/camilo-perez/.Xauthority:/root/.Xauthority:ro   
+      - ./ipc:/ipc:ro
+      - ./ui:/app/
+      - /:/host
+    depends_on:
+      l2-a:
+        condition: service_healthy
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
+
+  ui-b:
+    image: linkchat-ui
+    environment:
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=/root/.Xauthority
+      - SDL_VIDEODRIVER=x11
+      - QT_X11_NO_MITSHM=1
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - IPC_SOCKET=/ipc/linkchat-Camilo.sock
+      - MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./shared:/shared
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - /home/camilo-perez/.Xauthority:/root/.Xauthority:ro   
+      - ./ipc:/ipc:ro
+      - ./ui:/app/
+      - /:/host
+    depends_on:
+      l2-b:
+        condition: service_healthy
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
+    
+    networks:
+      - l2lab
