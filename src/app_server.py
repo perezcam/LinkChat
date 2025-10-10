@@ -145,7 +145,7 @@ class AppServer:
                     return {"ok": False, "error": "missing dst/path or not exists"}
 
                 if not self.file_sender:
-                    chunk_size = int(os.environ.get("CHUNK_SIZE", "900"))
+                    chunk_size = int(os.environ.get("CHUNK_SIZE", "1200"))
                     self.file_sender = FileSender(self.th_mgr, chunk_size) 
                 file_id = self.file_sender.send_file(path=path, dst_mac=dst)
                 meta = {

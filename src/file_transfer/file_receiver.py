@@ -163,7 +163,17 @@ class FileReceiver:
         self._send_ack(file_id, frame.src_mac, next_needed=0)
 
     def _on_data(self, frame: FrameSchema):
-        s = frame.payload.decode("utf-8")
+
+        payload = frame.payload
+        sep = payload.find(b"\n\n")  # fin del header (línea en blanco)
+        if sep == -1:
+            self._send_fin("unknown", frame.src_mac, "error", "bad_payload")
+            return
+        header_bytes = payload[:sep]
+        data = payload[sep + 2:]
+
+
+        s = header_bytes.decode("utf-8")
 
         kv = parse_payload(s)
         file_id = kv.get("file_id")
@@ -174,16 +184,9 @@ class FileReceiver:
         try: 
             idx   = int(kv.get("idx", "-1"))
             total = int(kv.get("total", "-1"))
-            b64   = kv.get("data_b64", "")
         except ValueError:
             return
-        if idx < 0 or idx >= ctx.total_chunks or total <= 0 or not b64:
-            return
-
-        try:
-            data = base64.b64decode(b64.encode("ascii")) 
-        except binascii.Error:
-            self._send_fin(ctx.file_id, frame.src_mac, "error", "bad_b64")
+        if idx < 0 or idx >= ctx.total_chunks or total <= 0:
             return
 
         with ctx.lock:
