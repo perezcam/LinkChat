@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 set -euo pipefail
 
 # -----------------------------------------------------------
@@ -6,11 +7,8 @@ set -euo pipefail
 # con su ALIAS) conectadas a un hotspot.
 #
 # Uso:
-#   ./run_linkchat_alias.sh .env.mi-nodo
-#
-# Requisitos:
-#   - Haber construido las imágenes al menos una vez: linkchat-backend, linkchat-ui
-#   - Cada laptop corre su propio par: l2-${ALIAS} + ui-${ALIAS}
+#   ./run_linkchat_alias.sh           # usa .env por defecto
+#   ./run_linkchat_alias.sh .env.nodo
 # -----------------------------------------------------------
 
 ENVFILE="${1:-.env}"
@@ -28,7 +26,7 @@ set +a
 : "${ETHER_TYPE:=0x88B5}"
 : "${CHUNK_SIZE:=900}"
 : "${LOG_LEVEL:=INFO}"
-: "${XAUTH_HOST:=/home/$USER/.Xauthority}"   # path de tu Xauthority en host (ajústalo si hace falta)
+: "${XAUTH_HOST:=/home/$USER/.Xauthority}"   # ajusta si tu Xauthority está en otro sitio
 
 # Detecta interfaz Wi-Fi si no la especificaste
 if [[ -z "${WIFI_IFACE:-}" || "$WIFI_IFACE" == "auto" ]]; then
@@ -58,7 +56,6 @@ cat > "$OVR_FILE" <<YAML
 services:
   ${SVC_BACK}:
     image: linkchat-backend
-    # usa la wlan real del host (para raw L2 sobre hotspot)
     network_mode: host
     cap_add:
       - NET_RAW
@@ -73,17 +70,17 @@ services:
       LOG_LEVEL: ${LOG_LEVEL}
       PYTHONUNBUFFERED: "1"
     volumes:
-      - ./ipc:/ipc
-      - .:/app
-      - ./shared:${BASE_DIR}
-      - /:/host:ro
+      - "./ipc:/ipc"
+      - ".:/app"
+      - "./shared:${BASE_DIR}"
+      - "/:/host:ro"
     tty: true
     stdin_open: true
     restart: unless-stopped
 
   ${SVC_UI}:
     image: linkchat-ui
-    depends_on: null
+    depends_on: []
     environment:
       DISPLAY: ${DISPLAY}
       XAUTHORITY: /root/.Xauthority
@@ -96,12 +93,12 @@ services:
       BASE_DIR: ${BASE_DIR}
       LOG_LEVEL: ${LOG_LEVEL}
     volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:ro
-      - ${XAUTH_HOST}:/root/.Xauthority:ro
-      - ./ipc:/ipc:ro
-      - ./ui:/app/
-      - ./shared:${BASE_DIR}
-      - /:/host:ro
+      - "/tmp/.X11-unix:/tmp/.X11-unix:ro"
+      - "${XAUTH_HOST}:/root/.Xauthority:ro"
+      - "./ipc:/ipc:ro"
+      - "./ui:/app/"
+      - "./shared:${BASE_DIR}"
+      - "/:/host:ro"
     tty: true
     stdin_open: true
     restart: unless-stopped
