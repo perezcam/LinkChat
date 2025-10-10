@@ -21,14 +21,14 @@ from src.security.security_handler import SecurityHandler
 from src.security.security_manager import SecurityManager
 
 try:
-    from ipc.ipc_server import IPCServer  
+    from ipc.ipc_server import IPCServer
     _IPC_AVAILABLE = True
 except Exception:
     _IPC_AVAILABLE = False
 
 DEFAULT_SOCK_DIR = os.environ.get("IPC_DIR", "/ipc")
 DEFAULT_SOCK_NAME = os.environ.get("IPC_NAME", "linkchat")
-DEFAULT_BASE_DIR = os.environ.get("BASE_DIR","/shared")
+DEFAULT_BASE_DIR = os.environ.get("BASE_DIR", "/shared")
 
 
 def _neighbors_snapshot(neighbors: Dict[str, Dict[str, Any]]):
@@ -51,7 +51,7 @@ def _resolve_socket_path(alias: str) -> str:
 class AppServer:
     """
     Orquestador: levanta raw socket, hilos, discovery, messaging y IPC UDS.
-    Expone comandos de alto nivel por IPC y publica eventos (chat / vecinos).
+    Expone comandos de alto nivel por IPC y publica eventos (chat / vecinos / file_*).
     """
     def __init__(
         self,
@@ -146,7 +146,7 @@ class AppServer:
 
                 if not self.file_sender:
                     chunk_size = int(os.environ.get("CHUNK_SIZE", "1200"))
-                    self.file_sender = FileSender(self.th_mgr, chunk_size) 
+                    self.file_sender = FileSender(self.th_mgr, chunk_size)
                 file_id = self.file_sender.send_file(path=path, dst_mac=dst)
                 meta = {
                     "dst": dst,
@@ -161,7 +161,7 @@ class AppServer:
 
             if t == "folder_send":
                 dst = cmd.get("dst") or cmd.get("dst_mac")
-                folder = cmd.get("folder") or cmd.get("path") 
+                folder = cmd.get("folder") or cmd.get("path")
                 if not (dst and folder and os.path.isdir(folder)):
                     return {"ok": False, "error": "missing dst/folder or not a directory"}
 
@@ -169,8 +169,7 @@ class AppServer:
                     chunk_size = int(os.environ.get("CHUNK_SIZE", "900"))
                     self.file_sender = FileSender(self.th_mgr, chunk_size)
 
-                
-                sent_list = self.file_sender.send_folder(folder_path=folder, dst_mac=dst) 
+                sent_list = self.file_sender.send_folder(folder_path=folder, dst_mac=dst)
                 files_resp = []
                 for file_id, rel in sent_list:
                     path_abs = os.path.join(folder, rel)
@@ -179,7 +178,7 @@ class AppServer:
                         "dst": dst,
                         "path": path_abs,
                         "name": name,
-                        "rel": rel,        
+                        "rel": rel,
                         "t0": time.time(),
                     }
                     self._files_out[file_id] = meta
@@ -188,7 +187,7 @@ class AppServer:
                         "file_id": file_id,
                         "dst": dst,
                         "name": name,
-                        "rel": rel, 
+                        "rel": rel,
                     })
                     files_resp.append({"file_id": file_id, "rel": rel})
 
@@ -213,7 +212,7 @@ class AppServer:
             for _ in range(200):  # ~10 s
                 await asyncio.sleep(0.05)
                 with contextlib.suppress(FileNotFoundError):
-                    os.chmod(path, 0o666)
+                    os.chmod(path, 0o666)  # RW para todos
                     return
 
         def _ipc_thread_fn():
@@ -246,6 +245,63 @@ class AppServer:
             text = ""
         self._emit_event({"type": "chat", "src": src_mac, "text": text})
 
+    def _register_file_rx_callbacks(self):
+        """Conecta FileReceiver → eventos IPC para la UI (receptor)."""
+        if not self.file_receiver:
+            return
+
+        def on_started(ev: Dict[str, Any]):
+            # ev: {file_id, src, name, rel?}
+            self._emit_event({
+                "type": "file_rx_started",
+                "file_id": ev.get("file_id"),
+                "src": ev.get("src"),
+                "name": ev.get("name"),
+                "rel": ev.get("rel"),
+            })
+
+        def on_progress(ev: Dict[str, Any]):
+            # ev: {file_id, src, name, rel, acked, total, progress}
+            self._emit_event({
+                "type": "file_rx_progress",
+                "file_id": ev.get("file_id"),
+                "src": ev.get("src"),
+                "name": ev.get("name"),
+                "rel": ev.get("rel"),
+                "acked": ev.get("acked"),
+                "total": ev.get("total"),
+                "progress": ev.get("progress"),
+            })
+
+        def on_finished(ev: Dict[str, Any]):
+            # ev: {file_id, src, name, rel, status}
+            self._emit_event({
+                "type": "file_rx_finished",
+                "file_id": ev.get("file_id"),
+                "src": ev.get("src"),
+                "name": ev.get("name"),
+                "rel": ev.get("rel"),
+                "status": ev.get("status") or "ok",
+            })
+
+        def on_error(ev: Dict[str, Any]):
+            # ev: {file_id, src, name, rel, error}
+            self._emit_event({
+                "type": "file_rx_error",
+                "file_id": ev.get("file_id"),
+                "src": ev.get("src"),
+                "name": ev.get("name"),
+                "rel": ev.get("rel"),
+                "error": ev.get("error") or "error",
+            })
+
+        self.file_receiver.register_event_handlers(
+            on_started=on_started,
+            on_progress=on_progress,
+            on_finished=on_finished,
+            on_error=on_error,
+        )
+
     def _ensure_file_poller(self):
         if self._file_poll_thread and self._file_poll_thread.is_alive():
             return
@@ -267,7 +323,7 @@ class AppServer:
                         "file_id": file_id,
                         "dst": meta["dst"],
                         "name": meta["name"],
-                        "rel": meta.get("rel"),     # <<< extra para carpeta
+                        "rel": meta.get("rel"),
                         "acked": acked,
                         "total": total,
                         "progress": prog,
@@ -278,7 +334,7 @@ class AppServer:
                             "file_id": file_id,
                             "dst": meta["dst"],
                             "name": meta["name"],
-                            "rel": meta.get("rel"),   # <<< extra para carpeta
+                            "rel": meta.get("rel"),
                             "status": "ok",
                         })
                         self._files_out.pop(file_id, None)
@@ -290,8 +346,9 @@ class AppServer:
     # --------------- Lifecycle ---------------
     def run_forever(self):
         """Arranca todo y bloquea hasta SIGINT/SIGTERM o stop()"""
+        log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
         logging.basicConfig(
-            level=logging.INFO,
+            level=getattr(logging, log_level, logging.INFO),
             format="%(asctime)s - %(levelname)s - [pid=%(process)d] %(message)s",
             handlers=[logging.StreamHandler(sys.stdout)],
             force=True
@@ -310,24 +367,42 @@ class AppServer:
 
                 self.file_transfer = FileTransferHandler(sock.mac)
 
-
+                # --- Seguridad (PSK en bytes o hex) ---
                 try:
-                    psk = os.environ.get("PSK")
-                    if psk:
-                        psk = psk.encode("utf-8")
-                    else:
-                        raise RuntimeError("No PSK provided. Set PSK=<hex> in env.")
+                    psk_env = os.environ.get("PSK")
+                    if not psk_env:
+                        raise RuntimeError("No PSK provided. Set PSK in env (bytes or hex).")
+
+                    # Si parece hex, intentar decodificarlo
+                    psk_bytes: bytes
+                    pe = psk_env.strip().lower()
+                    try:
+                        if pe.startswith("0x"):
+                            psk_bytes = bytes.fromhex(pe[2:])
+                        elif all(c in "0123456789abcdef" for c in pe) and (len(pe) % 2 == 0):
+                            psk_bytes = bytes.fromhex(pe)
+                        else:
+                            psk_bytes = psk_env.encode("utf-8")
+                    except Exception:
+                        psk_bytes = psk_env.encode("utf-8")
+
                     sec_handler = SecurityHandler()
-                    self.security = SecurityManager(pre_shared_key=psk, sec_handler=sec_handler)
-                    logging.info("[Security] Enabled with PSK (%d bytes).", len(psk))
+                    self.security = SecurityManager(pre_shared_key=psk_bytes, sec_handler=sec_handler)
+                    logging.info("[Security] Enabled with PSK (%d bytes).", len(psk_bytes))
                 except Exception as e:
                     logging.error("[Security] Failed to initialize: %s", e)
                     raise
-                
-                self.th_mgr = ThreadManager(socket_manager=sock, file_transfer_handler=self.file_transfer, security=self.security)
+
+                self.th_mgr = ThreadManager(
+                    socket_manager=sock,
+                    file_transfer_handler=self.file_transfer,
+                    security=self.security
+                )
                 self.th_mgr.start()
 
-                self.file_receiver = FileReceiver(self.th_mgr,DEFAULT_BASE_DIR)
+                # RX de archivos (con callbacks a IPC)
+                self.file_receiver = FileReceiver(self.th_mgr, DEFAULT_BASE_DIR)
+                self._register_file_rx_callbacks()
 
                 # Discovery + Messaging
                 self.discovery = Discovery(service_threads=self.th_mgr, alias=self.alias, interval_seconds=5.0)
@@ -373,21 +448,21 @@ class AppServer:
             # Detener y limpiar el IPC correctamente si existe
             if self.ipc and self._ipc_loop:
                 with contextlib.suppress(Exception):
-                    fut = asyncio.run_coroutine_threadsafe(self.ipc.stop(), self._ipc_loop)
+                    asyncio.run_coroutine_threadsafe(self.ipc.stop(), self._ipc_loop)
 
     def stop(self):
         self._stop_evt.set()
 
 
 def main():
-        alias = os.environ.get("ALIAS", "Nodo-A")
-        sock_path = (
-            os.environ.get("IPC_SOCKET")
-            or os.environ.get("IPC_SOCKET_PATH")
-            or _resolve_socket_path(alias)
-        )
-        server = AppServer(socket_path=sock_path)
-        server.run_forever()
+    alias = os.environ.get("ALIAS", "Nodo-A")
+    sock_path = (
+        os.environ.get("IPC_SOCKET")
+        or os.environ.get("IPC_SOCKET_PATH")
+        or _resolve_socket_path(alias)
+    )
+    server = AppServer(socket_path=sock_path)
+    server.run_forever()
 
 
 if __name__ == "__main__":

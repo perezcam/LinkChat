@@ -10,7 +10,7 @@ class InputBar:
         self._cursor_on = True
         self._cursor_t = 0
         self.images_dir = images_dir
-        self._icons = {"attach": None, "send": None}
+        self._icons = {"attach": None, "send": None} 
         self._icon_scaled_cache = {}
         self._last_btn_size = None
         self._r = None
@@ -20,17 +20,26 @@ class InputBar:
 
     # ---------- helpers ----------
     def _load_icons(self):
-        def load(name):
+        def load(name: str) -> pg.Surface:
             p = os.path.join(self.images_dir, f"{name}.svg")
-            surf = pg.image.load(p).convert_alpha()
-            return surf
+            # asumimos que existen; si no, esto levantará excepción (deseado)
+            return pg.image.load(p).convert_alpha()
         self._icons["attach"] = load("attach")
         self._icons["send"]   = load("send")
 
-    def _ensure_scaled_icons(self, btn_size):
-        # rehace el cache si cambia el tamaño de botón
+    def _ensure_scaled_icons(self, btn_size: int):
+        """
+        Garantiza que los iconos estén cargados y escalados al tamaño del botón.
+        Sin placeholders: asumimos archivos presentes.
+        """
+        # Cargar si aún no están
+        if self._icons["attach"] is None or self._icons["send"] is None:
+            self._load_icons()
+
+        # Reusar cache si el tamaño no cambió
         if self._last_btn_size == btn_size and self._icon_scaled_cache:
             return
+
         self._icon_scaled_cache = {
             k: pg.transform.smoothscale(v, (btn_size, btn_size))
             for k, v in self._icons.items()
@@ -41,9 +50,9 @@ class InputBar:
         """Calcula y guarda los rects: barra, edit, botones."""
         pad = L["pad"]
         s   = L["s"]
-        r_content = L.get("chat", L.get("content", L["sidebar"])) 
+        r_content = L.get("chat", L.get("content", L["sidebar"]))
 
-        h = int(56 * s)                        
+        h = int(56 * s)
         r = pg.Rect(
             r_content.x + pad,
             r_content.bottom - pad - h,
@@ -51,15 +60,19 @@ class InputBar:
             h
         )
         ip = int(12 * s)                        # padding interno
-        btn = h - 2 * ip                        # boton cuadrado
+        btn = h - 2 * ip                        # botón cuadrado
+
+        # Asegura iconos listos ANTES de usarlos (Composer llama _compute_rects() primero)
         self._ensure_scaled_icons(btn)
 
-        r_btn_left  = pg.Rect(r.x + ip,         r.y + ip, btn, btn)
-        r_btn_right = pg.Rect(r.right - ip - btn, r.y + ip, btn, btn)
+        r_btn_left  = pg.Rect(r.x + ip,             r.y + ip, btn, btn)
+        r_btn_right = pg.Rect(r.right - ip - btn,   r.y + ip, btn, btn)
 
-        r_edit = pg.Rect(r_btn_left.right + ip, r.y + ip,
-                         r_btn_right.left - ip - (r_btn_left.right + ip),
-                         btn)
+        r_edit = pg.Rect(
+            r_btn_left.right + ip, r.y + ip,
+            r_btn_right.left - ip - (r_btn_left.right + ip),
+            btn
+        )
 
         self._r, self._r_edit = r, r_edit
         self._r_btn_left, self._r_btn_right = r_btn_left, r_btn_right
@@ -69,11 +82,13 @@ class InputBar:
         """
         Devuelve:
           - ("attach", None) si click en adjuntar
-          - ("send", text)   si click en enviar o Enter
+          - ("send", text)   si click en enviar o Enter (aun si text == "")
           - None en el resto de casos
+
+        Nota: NO limpia self.value; el Composer decide si envía y limpia.
         """
         if self._r is None:
-            return None  
+            return None  # aún no se computaron rects
 
         if e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
             if self._r.collidepoint(e.pos):
@@ -81,24 +96,21 @@ class InputBar:
                 if self._r_btn_left.collidepoint(e.pos):
                     return ("attach", None)
                 if self._r_btn_right.collidepoint(e.pos):
-                    txt = self.value.strip()
-                    if txt:
-                        self.value = ""
-                        return ("send", txt)
+                    # Emitimos SIEMPRE el intento de enviar (aunque esté vacío)
+                    return ("send", self.value.strip())
             else:
                 self.focus = False
             return None
 
         if e.type == pg.KEYDOWN and self.focus:
             if e.key in (pg.K_RETURN, pg.K_KP_ENTER):
-                txt = self.value.strip()
-                if txt:
-                    self.value = ""
-                    return ("send", txt)
-                return None
+                # Emitimos SIEMPRE; composición decide si procede
+                return ("send", self.value.strip())
+
             if e.key == pg.K_BACKSPACE:
                 self.value = self.value[:-1]
                 return None
+
             if e.key == pg.K_v and (pg.key.get_mods() & pg.KMOD_CTRL):
                 try:
                     clip = pg.scrap.get(pg.SCRAP_TEXT)
@@ -107,18 +119,16 @@ class InputBar:
                 except Exception:
                     pass
                 return None
+
             # texto imprimible
-            if e.unicode and not e.key in (pg.K_LCTRL, pg.K_RCTRL, pg.K_LALT, pg.K_RALT):
+            if e.unicode and e.key not in (pg.K_LCTRL, pg.K_RCTRL, pg.K_LALT, pg.K_RALT):
                 self.value += e.unicode
                 return None
 
         return None
 
     def draw(self, surf, L):
-        if self._icons["attach"] is None:
-            self._load_icons()
-
-        # rects
+        # rects (esto ya asegura iconos listos y escalados)
         self._compute_rects(L)
         r, r_edit = self._r, self._r_edit
         r_btn_left, r_btn_right = self._r_btn_left, self._r_btn_right
@@ -153,8 +163,6 @@ class InputBar:
         self._cursor_t = (self._cursor_t + 1) % 60
         self._cursor_on = self._cursor_t < 30
         if self.focus and self._cursor_on:
-            # mide ancho del texto actual
-            # (si tienes un helper de medir texto úsalo; aquí usamos render rápido)
             tw = f["p"].render(self.value or "", True, (0,0,0)).get_width()
             cx = r_edit.x + pad_txt + tw + 2
             cy1, cy2 = r_edit.y + 8, r_edit.bottom - 8
