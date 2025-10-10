@@ -17,6 +17,8 @@ from src.prepare.network_config import get_runtime_config
 from src.file_transfer.handlers.file_transfer_handler import FileTransferHandler
 from src.file_transfer.file_sender import FileSender
 from src.file_transfer.file_receiver import FileReceiver
+from src.security.security_handler import SecurityHandler
+from src.security.security_manager import SecurityManager
 
 try:
     from ipc.ipc_server import IPCServer  
@@ -101,6 +103,8 @@ class AppServer:
         self._ipc_thread: Optional[threading.Thread] = None
         self._stop_evt = threading.Event()
 
+        self.security: SecurityManager | None = None
+
     # --------------- IPC glue ---------------
     def _emit_event(self, ev: Dict[str, Any]):
         if not (self.ipc and self._ipc_loop):
@@ -141,7 +145,7 @@ class AppServer:
                     return {"ok": False, "error": "missing dst/path or not exists"}
 
                 if not self.file_sender:
-                    chunk_size = int(os.environ.get("CHUNK_SIZE", "900"))
+                    chunk_size = int(os.environ.get("CHUNK_SIZE", "1200"))
                     self.file_sender = FileSender(self.th_mgr, chunk_size) 
                 file_id = self.file_sender.send_file(path=path, dst_mac=dst)
                 meta = {
@@ -305,7 +309,22 @@ class AppServer:
                 )
 
                 self.file_transfer = FileTransferHandler(sock.mac)
-                self.th_mgr = ThreadManager(socket_manager=sock, file_transfer_handler=self.file_transfer)
+
+
+                try:
+                    psk = os.environ.get("PSK")
+                    if psk:
+                        psk = psk.encode("utf-8")
+                    else:
+                        raise RuntimeError("No PSK provided. Set PSK=<hex> in env.")
+                    sec_handler = SecurityHandler()
+                    self.security = SecurityManager(pre_shared_key=psk, sec_handler=sec_handler)
+                    logging.info("[Security] Enabled with PSK (%d bytes).", len(psk))
+                except Exception as e:
+                    logging.error("[Security] Failed to initialize: %s", e)
+                    raise
+                
+                self.th_mgr = ThreadManager(socket_manager=sock, file_transfer_handler=self.file_transfer, security=self.security)
                 self.th_mgr.start()
 
                 self.file_receiver = FileReceiver(self.th_mgr,DEFAULT_BASE_DIR)

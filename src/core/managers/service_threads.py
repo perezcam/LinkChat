@@ -11,19 +11,21 @@ from src.core.schemas.frame_schemas import FrameSchema
 from src.core.schemas.scheduled_task import ScheduledTask
 from src.file_transfer.handlers.file_transfer_handler import FileTransferHandler
 from src.file_transfer.schemas.send_ctx import FileSendCtxSchema
+from src.security.security_manager import SecurityManager
 
 class ThreadManager:
     """
     Orquesta los hilos de trabajo para la aplicación de chat.
     Gestiona la recepción, el envío, el procesamiento de mensajes y las tareas periódicas.
     """
-    def __init__(self, socket_manager: SocketManager, file_transfer_handler : FileTransferHandler):
+    def __init__(self, socket_manager: SocketManager, file_transfer_handler : FileTransferHandler, security: SecurityManager):
         self._socket_manager = socket_manager
         self._started = False
         self._incoming_queue: queue.Queue[FrameSchema] = queue.Queue()
         self._outgoing_queue: queue.Queue[FrameSchema] = queue.Queue()
         self._shutdown_event = threading.Event()
         self.file_transfer_handler = file_transfer_handler
+        self.security = security
 
         self._message_handlers: Dict[MessageType, Callable[[FrameSchema], None]] = {}
         self._scheduled_tasks: list[ScheduledTask] = []
@@ -60,6 +62,11 @@ class ThreadManager:
                     # Tip: Si tu decoder devuelve None para tipos/ethertype ajenos, simplemente ignora
                     continue
 
+                if self.security:
+                    decoded_frame = self.security.accept_incoming(decoded_frame)
+                    if decoded_frame is None:
+                        continue
+
                 self._incoming_queue.put(decoded_frame)
 
             except Exception as e:
@@ -72,6 +79,10 @@ class ThreadManager:
         while not self._shutdown_event.is_set():
             try:
                 frame_to_send = self._outgoing_queue.get(timeout=1)
+
+                if self.security:
+                    frame_to_send = self.security.protect_outgoing(frame_to_send)
+
                 frame_to_send_bytes = create_ethernet_frame(frame_to_send)
                 self._socket_manager.send_raw_frame(frame_to_send_bytes)
                 self._outgoing_queue.task_done()

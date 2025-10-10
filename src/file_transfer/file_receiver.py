@@ -20,6 +20,8 @@ class FileReceiver:
         self._service_threads = service_threads
         self.ctx_by_id: Dict[str, FileRcvCtxSchema] = {}
         self.base_dir = os.path.abspath(base_dir)
+
+        #Creates directory if not exists
         os.makedirs(self.base_dir, exist_ok=True)
 
         self._service_threads.add_message_handler(MessageType.FILE_DATA, self._on_data)
@@ -27,6 +29,7 @@ class FileReceiver:
 
     def _send_ack(self, file_id: str, dst_mac: str, next_needed: int):
         payload = f"file_id={file_id}\nnext_needed={next_needed}\n".encode("utf-8")
+
         frame = self._service_threads.file_transfer_handler.get_frame(
             dst_mac, MessageType.ACK, payload
         )
@@ -35,7 +38,7 @@ class FileReceiver:
     def _send_fin(self, file_id: str, dst_mac: str, status: str, reason: str = ""):
         ctx = self.ctx_by_id.get(file_id)
         if not ctx:
-            # fallback si no hubiera ctx (raro)
+            # fallback para empty file (antes de annadirs a ctx by id)
             kv = f"file_id={file_id}\nstatus={status}\n"
             if reason:
                 kv += f"reason={reason}\n"
@@ -84,34 +87,43 @@ class FileReceiver:
             self._send_fin(file_id, src_mac, "ok")
         else:
             self._send_fin(file_id, src_mac, "error", "hash_mismatch")
-        self.ctx_by_id.pop(file_id, None)
+        if self.ctx_by_id[file_id]: 
+            self.ctx_by_id.pop(file_id, None)
 
     def _on_meta(self, frame: FrameSchema):
+        
         kv = parse_payload(frame.payload.decode("utf-8"))
 
-        file_id = kv.get("file_id")
-        name = kv.get("name")
-        size = int(kv.get("size", "0"))
-        sha256_hex = kv.get("sha256", "")
-        chunk_size = int(kv.get("chunk_size", "0"))
-        total = int(kv.get("total", "0"))
-        rel_path = self._sanitize_relative_path(kv.get("path", ""))
-
-        print("ERROR BAD META NAME: ",name,"size: ",size,"chunk_size: ",chunk_size)
-        if not file_id or not name or not size or not chunk_size or not total:
-            # Meta incompleta: responde error temprano
-            self._send_fin(file_id or "unknown", frame.src_mac, "error", "bad_meta")
+        required = ["file_id", "name", "size", "sha256", "chunk_size", "total"]
+        missing = [k for k in required if kv.get(k) is None]  # ojo: None vs ""
+        if missing:
+            self._send_fin(kv.get("file_id") or "unknown", frame.src_mac, "error", "bad_meta_missing")
             return
         
+        file_id = kv["file_id"]
+        name = kv["name"]
+        sha256_hex = kv["sha256"]
+        rel_path = self._sanitize_relative_path(kv.get("path", ""))
+
+        try:
+            size = int(kv["size"])
+            chunk_size = int(kv["chunk_size"])
+            total = int(kv["total"])
+        except ValueError:
+            self._send_fin(file_id or "unknown", frame.src_mac, "error", "bad_meta_non_numeric")
+            return
+
+        if not file_id or not name or not sha256_hex:
+            self._send_fin(file_id or "unknown", frame.src_mac, "error", "bad_meta_empty_str")
+            return
+        
+        if chunk_size <= 0 or size < 0 or total < 0:
+            self._send_fin(file_id, frame.src_mac, "error", "bad_meta_ranges")
+            return
+                
        
         dest_rel = rel_path if rel_path else name
         dest_path = os.path.normpath(os.path.join(self.base_dir, dest_rel))
-        #TODO: esto lo que hace es un segundo chequeo, no creo que sea necesario
-        #   Decidir si borrar despues
-        # base_abs = os.path.abspath(self.base_dir) + os.sep
-        # if not os.path.abspath(dest_path).startswith(base_abs):
-        #     self._send_fin(file_id, frame.src_mac, "error", "bad_path")
-        #     return
         
         os.makedirs(os.path.dirname(dest_path), exist_ok=True)
         temp_path = dest_path + ".part"
@@ -151,9 +163,18 @@ class FileReceiver:
         self._send_ack(file_id, frame.src_mac, next_needed=0)
 
     def _on_data(self, frame: FrameSchema):
-        s = frame.payload.decode("utf-8")
 
-        #  Asegúrate de que el emisor ponga '\n'.
+        payload = frame.payload
+        sep = payload.find(b"\n\n")  # fin del header (línea en blanco)
+        if sep == -1:
+            self._send_fin("unknown", frame.src_mac, "error", "bad_payload")
+            return
+        header_bytes = payload[:sep]
+        data = payload[sep + 2:]
+
+
+        s = header_bytes.decode("utf-8")
+
         kv = parse_payload(s)
         file_id = kv.get("file_id")
         if not file_id or file_id not in self.ctx_by_id:
@@ -163,21 +184,9 @@ class FileReceiver:
         try: 
             idx   = int(kv.get("idx", "-1"))
             total = int(kv.get("total", "-1"))
-            b64   = kv.get("data_b64", "")
         except ValueError:
             return
-        if idx < 0 or idx >= ctx.total_chunks or total <= 0 or not b64:
-            return
-        
-        # coherencia con META
-        if total != ctx.total_chunks:
-            # TODO: ignora/avisa: total cambió
-            pass
-
-        try:
-            data = base64.b64decode(b64.encode("ascii")) #TODO: Potencialmente quitar esto
-        except binascii.Error:
-            self._send_fin(ctx.file_id, frame.src_mac, "error", "bad_b64")
+        if idx < 0 or idx >= ctx.total_chunks or total <= 0:
             return
 
         with ctx.lock:
@@ -198,7 +207,7 @@ class FileReceiver:
             if len(ctx.received) >= ctx.total_chunks and not ctx.finished:
                 ctx.finished = True
 
-        # Si se completó, valida hash fuera del lock (evita bloquear)
+        # Valida hash fuera de el lock
         if ctx.finished:
             calc = get_file_hash(ctx.temp_path)  
             if calc.lower() == ctx.sha256_expected.lower():
