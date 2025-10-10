@@ -61,7 +61,7 @@ class SecurityManager:
             payload=out_payload
         )
 
-        print("security: Se encripto el frame, payload: ", out_payload)
+        # print("security: Se encripto el frame, payload: ", out_payload)
 
         return out_frame
     
@@ -105,7 +105,7 @@ class SecurityManager:
             payload=payload_decrypt
         )
 
-        print("security: Se desencripto el frame, payload: ", payload_decrypt)
+        # print("security: Se desencripto el frame, payload: ", payload_decrypt)
 
         return out_frame
 

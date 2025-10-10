@@ -31,14 +31,16 @@ class FileTransferHandler:
         with open(ctx.path, "rb") as f:
             f.seek(idx * ctx.chunk_size)
             data = f.read(ctx.chunk_size)
-        #Convert it to string
-        b64 = base64.b64encode(data).decode("ascii") 
-        payload = self._kv_bytes(
+
+        # Header como key=value\n + línea en blanco para separar del binario
+        header = self._kv_bytes(
             file_id=ctx.file_id,
             idx=idx,
-            total=ctx.total_chunks,
-            data_b64=b64
-        )
+            total=ctx.total_chunks
+        ) + b"\n"  
+
+        payload = header + data     
+
         return self.get_frame(ctx.dst_mac, MessageType.FILE_DATA, payload)
         
     def get_frame(self, dst_mac: str, msg_type: MessageType, payload: bytes) -> FrameSchema:
