@@ -19,6 +19,7 @@ services:
       - IPC_SOCKET=/ipc/linkchat-Mauricio.sock
       - PYTHONUNBUFFERED=1
       - BASE_DIR=/home/camilo-perez/LINKCHAT/
+      - PSK=mi_clave_super_secreta_123
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -51,6 +52,7 @@ services:
       - IPC_SOCKET=/ipc/linkchat-Camilo.sock
       - PYTHONUNBUFFERED=1
       - BASE_DIR=/shared
+      - PSK=mi_clave_super_secreta_123
     cap_add:
       - NET_RAW
       - NET_ADMIN

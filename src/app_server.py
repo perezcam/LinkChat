@@ -17,6 +17,8 @@ from src.prepare.network_config import get_runtime_config
 from src.file_transfer.handlers.file_transfer_handler import FileTransferHandler
 from src.file_transfer.file_sender import FileSender
 from src.file_transfer.file_receiver import FileReceiver
+from src.security.security_handler import SecurityHandler
+from src.security.security_manager import SecurityManager
 
 try:
     from ipc.ipc_server import IPCServer  
@@ -100,6 +102,8 @@ class AppServer:
         self._ipc_loop: Optional[asyncio.AbstractEventLoop] = None
         self._ipc_thread: Optional[threading.Thread] = None
         self._stop_evt = threading.Event()
+
+        self.security: SecurityManager | None = None
 
     # --------------- IPC glue ---------------
     def _emit_event(self, ev: Dict[str, Any]):
@@ -305,7 +309,22 @@ class AppServer:
                 )
 
                 self.file_transfer = FileTransferHandler(sock.mac)
-                self.th_mgr = ThreadManager(socket_manager=sock, file_transfer_handler=self.file_transfer)
+
+
+                try:
+                    psk = os.environ.get("PSK")
+                    if psk:
+                        psk = psk.encode("utf-8")
+                    else:
+                        raise RuntimeError("No PSK provided. Set PSK=<hex> in env.")
+                    sec_handler = SecurityHandler()
+                    self.security = SecurityManager(pre_shared_key=psk, sec_handler=sec_handler)
+                    logging.info("[Security] Enabled with PSK (%d bytes).", len(psk))
+                except Exception as e:
+                    logging.error("[Security] Failed to initialize: %s", e)
+                    raise
+                
+                self.th_mgr = ThreadManager(socket_manager=sock, file_transfer_handler=self.file_transfer, security=self.security)
                 self.th_mgr.start()
 
                 self.file_receiver = FileReceiver(self.th_mgr,DEFAULT_BASE_DIR)

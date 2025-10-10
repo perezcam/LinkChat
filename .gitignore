@@ -1,3 +1,26 @@
 grbg
 .venv
 shared
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.egg
+*.log
+.env
+.vscode/
+.idea/
+
+# ---- Docker ----
+*.pid
+*.swp
+*.swo
+
+# ---- Bytecode caches ----
+src/**/__pycache__/
+ui/**/__pycache__/
+ipc/**/__pycache__/
