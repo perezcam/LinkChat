@@ -32,7 +32,7 @@ class FileTransferHandler:
             f.seek(idx * ctx.chunk_size)
             data = f.read(ctx.chunk_size)
         #Convert it to string
-        b64 = base64.b64encode(data).decode("ascii") #TODO: Cambiar esto 
+        b64 = base64.b64encode(data).decode("ascii") 
         payload = self._kv_bytes(
             file_id=ctx.file_id,
             idx=idx,
@@ -51,7 +51,7 @@ class FileTransferHandler:
             header=HeaderSchema(
                 message_type=msg_type,
                 payload_len=len(payload),
-                sequence=self._seq #TODO: Preguntarle a Camilo como annadir el checksum? Se agrega en create_etehrnet_frame?
+                sequence=self._seq 
             ),
             payload=payload
         )
