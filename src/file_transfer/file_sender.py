@@ -31,8 +31,7 @@ class FileSender:
         for root, _, files in os.walk(folder_path):
             for fname in files:
                 full_path = os.path.join(root, fname)
-                rel_path = self._to_posix_relative(full_path, base_for_rel)
-
+                rel_path = self._to_posix_relative(full_path, os.path.dirname(os.path.normpath(folder_path)))
                 file_id = self.send_file(full_path, dst_mac, rel_path)
                 ctx = self.service_threads.get_ctx_by_id(file_id)
                 while ctx and not ctx.finished:
