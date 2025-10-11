@@ -18,7 +18,7 @@ class InputBar:
         self._r_btn_left = None
         self._r_btn_right = None
 
-    # ---------- helpers ----------
+    #  helpers 
     def _load_icons(self):
         def load(name: str) -> pg.Surface:
             p = os.path.join(self.images_dir, f"{name}.svg")
@@ -59,10 +59,10 @@ class InputBar:
             r_content.w - 2 * pad,
             h
         )
-        ip = int(12 * s)                        # padding interno
-        btn = h - 2 * ip                        # botón cuadrado
+        ip = int(12 * s)                        
+        btn = h - 2 * ip                        
 
-        # Asegura iconos listos ANTES de usarlos (Composer llama _compute_rects() primero)
+        # Asegura iconos listos ANTES de usarlos
         self._ensure_scaled_icons(btn)
 
         r_btn_left  = pg.Rect(r.x + ip,             r.y + ip, btn, btn)
@@ -77,7 +77,7 @@ class InputBar:
         self._r, self._r_edit = r, r_edit
         self._r_btn_left, self._r_btn_right = r_btn_left, r_btn_right
 
-    # ---------- API ----------
+    #  API 
     def handle_event(self, e):
         """
         Devuelve:
@@ -85,10 +85,9 @@ class InputBar:
           - ("send", text)   si click en enviar o Enter (aun si text == "")
           - None en el resto de casos
 
-        Nota: NO limpia self.value; el Composer decide si envía y limpia.
         """
         if self._r is None:
-            return None  # aún no se computaron rects
+            return None 
 
         if e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
             if self._r.collidepoint(e.pos):
@@ -96,7 +95,7 @@ class InputBar:
                 if self._r_btn_left.collidepoint(e.pos):
                     return ("attach", None)
                 if self._r_btn_right.collidepoint(e.pos):
-                    # Emitimos SIEMPRE el intento de enviar (aunque esté vacío)
+                    # Emitimos SIEMPRE el intento de enviar 
                     return ("send", self.value.strip())
             else:
                 self.focus = False
@@ -128,7 +127,7 @@ class InputBar:
         return None
 
     def draw(self, surf, L):
-        # rects (esto ya asegura iconos listos y escalados)
+        # rects
         self._compute_rects(L)
         r, r_edit = self._r, self._r_edit
         r_btn_left, r_btn_right = self._r_btn_left, self._r_btn_right
@@ -136,18 +135,18 @@ class InputBar:
         # barra
         rounded_rect(surf, r, CLR["panel"], L["r_sm"])
 
-        # botón adjuntar (izquierda)
+        # botón adjuntar 
         rounded_rect(surf, r_btn_left, CLR["panel"], L["r_sm"])
         surf.blit(self._icon_scaled_cache["attach"], r_btn_left)
 
-        # botón enviar (derecha)
+        # botón enviar
         rounded_rect(surf, r_btn_right, CLR["panel"], L["r_sm"])
         surf.blit(self._icon_scaled_cache["send"], r_btn_right)
 
         # área de texto
         rounded_rect(surf, r_edit, CLR["surface_alt"], L["r_sm"])
 
-        # placeholder / texto
+        # placeholder 
         f = L["fonts"]
         pad_txt = int(10 * L["s"])
         placeholder = "Type a message..."
@@ -159,7 +158,7 @@ class InputBar:
         surf.set_clip(r_edit)
         text(surf, show, f["p"], color, (r_edit.x + pad_txt, r_edit.centery), "midleft")
 
-        # cursor parpadeante si hay foco
+        # cursor parpadeante en la escritura (|)
         self._cursor_t = (self._cursor_t + 1) % 60
         self._cursor_on = self._cursor_t < 30
         if self.focus and self._cursor_on:

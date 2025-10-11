@@ -11,7 +11,7 @@ def set_sinks(*,
               on_progress: Callable[[dict], None] | None = None,
               on_finished: Callable[[dict], None] | None = None,
               on_error: Callable[[dict], None] | None = None):
-    """Registra callbacks para redirigir los eventos a tu bus/UI."""
+    """Registra callbacks para redirigir los eventos a UI."""
     global _sink_started, _sink_progress, _sink_finished, _sink_error
     _sink_started = on_started
     _sink_progress = on_progress

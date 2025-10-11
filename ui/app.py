@@ -65,11 +65,11 @@ def run(
     inputbar = InputBar(images_dir="images")
     composer = Composer(inputbar, images_dir="images")
 
-    # ---- helpers tarjetas de archivo + progreso ----
+    #  helpers tarjetas de archivo + progreso 
     def now_hhmm():
         return datetime.now().strftime("%H:%M")
 
-    # TX (yo envío)
+    # TX 
     def append_local_file_card(to_mac: str, filename: str, subtitle: str = "Enviando…") -> ChatMessage:
         msg = ChatMessage(text="", time=now_hhmm(), side="tx")
         setattr(msg, "file", {"name": filename, "subtitle": subtitle})
@@ -77,7 +77,7 @@ def run(
         name_index_tx[filename].append(msg)
         return msg
 
-    # RX (yo recibo)
+    # RX 
     def append_incoming_file_card(from_mac: str, filename: str, subtitle: str = "Recibiendo…") -> ChatMessage:
         msg = ChatMessage(text="", time=now_hhmm(), side="rx")
         setattr(msg, "file", {"name": filename, "subtitle": subtitle})
@@ -90,22 +90,22 @@ def run(
         if isinstance(f, dict):
             f["subtitle"] = subtitle
 
-    # Índices TX:
-    progress_index_tx: Dict[str, ChatMessage] = {}     # file_id -> ChatMessage
-    name_index_tx = defaultdict(list)                  # name -> [ChatMessage]
-    rel_index_tx  = defaultdict(list)                  # rel  -> [ChatMessage]
-    last_tick_tx: Dict[str, float] = {}                # file_id -> last progress ts
+    # indices TX:
+    progress_index_tx: Dict[str, ChatMessage] = {}    
+    name_index_tx = defaultdict(list)                  
+    rel_index_tx  = defaultdict(list)                 
+    last_tick_tx: Dict[str, float] = {}               
 
-    # Índices RX:
-    progress_index_rx: Dict[str, ChatMessage] = {}     # file_id -> ChatMessage
-    name_index_rx = defaultdict(list)                  # (from_mac, name) -> [ChatMessage]
-    rel_index_rx  = defaultdict(list)                  # (from_mac, rel)  -> [ChatMessage]
-    last_tick_rx: Dict[str, float] = {}                # file_id -> last progress ts
+    # indices RX:
+    progress_index_rx: Dict[str, ChatMessage] = {}    
+    name_index_rx = defaultdict(list)                 
+    rel_index_rx  = defaultdict(list)                 
+    last_tick_rx: Dict[str, float] = {}                
 
-    # NUEVO: agrupar por carpeta (RX)
-    folder_card_rx: Dict[tuple, ChatMessage] = {}      # (src, folder_root) -> ChatMessage
-    folder_stats_rx: Dict[tuple, Dict[str, int]] = {}  # (src, folder_root) -> {"total": n, "done": m}
-    fileid_to_folder_rx: Dict[str, tuple] = {}         # file_id -> (src, folder_root)
+    # agrupar por carpeta (RX)
+    folder_card_rx: Dict[tuple, ChatMessage] = {}      
+    folder_stats_rx: Dict[tuple, Dict[str, int]] = {}  
+    fileid_to_folder_rx: Dict[str, tuple] = {}         
 
     def _folder_root(rel: str | None):
         if not rel:
@@ -124,7 +124,7 @@ def run(
         if fid:
             last_tick_rx[fid] = time.time()
 
-    # ---------- Resolución de mensajes ----------
+    # resolver mensajes
     def _resolve_msg_for_event_tx(ev: dict):
         fid = ev.get("file_id")
         if fid and fid in progress_index_tx:
@@ -177,7 +177,7 @@ def run(
 
         return None
 
-    # ---------- Handlers TX (enviando) ----------
+    # handlers tx
     def on_file_tx_started(ev: dict):
         msg = _resolve_msg_for_event_tx(ev)
         fid = ev.get("file_id")
@@ -238,7 +238,7 @@ def run(
             progress_index_tx.pop(fid, None)
             last_tick_tx.pop(fid, None)
 
-    # ---------- Handlers RX (recibiendo) ----------
+    # handlers rx
     def on_file_rx_started(ev: dict):
         """
         Esperado: {"type":"file_rx_started","file_id":"...","src":"aa:bb:...","name":"archivo.ext","rel":"Carpeta/sub/archivo"}
@@ -271,7 +271,7 @@ def run(
             _touch_rx(fid)
             return
 
-        # Fallback: archivo suelto (sin carpeta)
+        # fallback si el archivo esta suelto
         name = ev.get("name") or "archivo"
         msg = append_incoming_file_card(src, name, "Recibiendo…")
         if rel:
@@ -367,13 +367,13 @@ def run(
     pump.subscribe("file_tx_started",  on_file_tx_started)
     pump.subscribe("file_tx_progress", on_file_tx_progress)
     pump.subscribe("file_tx_finished", on_file_tx_finished)
-    pump.subscribe("file_tx_done",     on_file_tx_done)   # compat
+    pump.subscribe("file_tx_done",     on_file_tx_done)  
     pump.subscribe("file_tx_error",    on_file_tx_error)
 
     pump.subscribe("file_rx_started",  on_file_rx_started)
     pump.subscribe("file_rx_progress", on_file_rx_progress)
     pump.subscribe("file_rx_finished", on_file_rx_finished)
-    pump.subscribe("file_rx_done",     on_file_rx_done)   # compat
+    pump.subscribe("file_rx_done",     on_file_rx_done)  
     pump.subscribe("file_rx_error",    on_file_rx_error)
 
     running = True
@@ -381,7 +381,7 @@ def run(
         dt = clock.tick(60)
         time_delta = dt / 1000.0
 
-        # ----------------- INPUT -----------------
+        # input 
         for e in pg.event.get():
             if e.type == pg.QUIT:
                 running = False
@@ -393,7 +393,7 @@ def run(
                 manager.process_events(e)
                 picker.process_event(e)
 
-                # Sidebar: selección de contacto o "__ALL__"
+                # Sidebar para selección de contacto o "__ALL__"
                 try:
                     w, h = screen.get_size()
                     L = compute_layout(w, h)
@@ -423,11 +423,11 @@ def run(
                     text_to_send = (payload.get("text") or "").strip()
                     files_to_send = payload.get("files") or []
 
-                    # --- MODO BROADCAST (solo mensajes) ---
+                    #  MODO BROADCAST 
                     if roster.selected_mac == "__ALL__":
                         if text_to_send:
                             try:
-                                # usa ChatService → IPC por dentro (send_cmd)
+                                # send_cmd
                                 chat.send_text_all(text_to_send, echo=True)
                             except Exception as ex:
                                 chat.messages_by_mac.setdefault("__ALL__", []).append(
@@ -436,16 +436,14 @@ def run(
                         # Ignorar adjuntos en broadcast
                         continue
 
-                    # --- MODO 1-a-1 (como ya lo tenías) ---
+                    #modo p2p
                     if text_to_send:
                         chat.send_text(roster.selected_mac, text_to_send)
 
                     for path in files_to_send:
                         try:
                             filename = os.path.basename(path)
-                            # 1) Eco local TX
                             msg = append_local_file_card(roster.selected_mac, filename, "Enviando…")
-                            # 2) Envío real
                             returned_id = None
                             if hasattr(files, "send_path"):
                                 returned_id = files.send_path(roster.selected_mac, path)
@@ -461,11 +459,12 @@ def run(
                         except Exception as ex:
                             chat.send_text(roster.selected_mac, f"[error adjunto] {path}: {ex}")
 
-        # ----------------- EVENTOS (BACKEND → UI) -----------------
+        #  EVENTOS(BACKEND → UI) 
         pump.pump(bridge, max_events=300)
 
-        # ----------------- WATCHDOGS -----------------
+        #  WATCHDOGS 
         now = time.time()
+        #para evitar problemas en archivos pequennos
         # TX: marca Enviado si no hay progreso hace ε seg.
         for fid, msg in list(progress_index_tx.items()):
             ts = last_tick_tx.get(fid)
@@ -484,7 +483,7 @@ def run(
                 progress_index_rx.pop(fid, None)
                 last_tick_rx.pop(fid, None)
 
-        # ----------------- RENDER -----------------
+        # - RENDER -
         w, h = screen.get_size()
         L = compute_layout(w, h)
 
@@ -494,7 +493,7 @@ def run(
         sidebar.draw(screen, L, sidebar_rows)
 
         # Header: muestra "Todos" cuando es broadcast
-        current_name = "Camilo"
+        current_name = "Linkchat"
         current_online = False
         if roster.selected_mac == "__ALL__":
             current_name = "Todos"
@@ -507,7 +506,7 @@ def run(
                     break
         header.draw(screen, L, current_name, current_online)
 
-        # Hilo actual (permite "__ALL__" si quieres reflejar mensajes de broadcast)
+        # para broadcast
         current_msgs = chat.messages_by_mac.get(roster.selected_mac or "", [])
         messages.draw(screen, L, [m.__dict__ for m in current_msgs])
 

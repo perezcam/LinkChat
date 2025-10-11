@@ -8,9 +8,8 @@ class MessagesView:
         self.wrap_cache = {}
         self.images_dir = images_dir
         self._icons = {"file": None}            
-        self._icon_scaled_cache = {}            
+        self._icon_scaled_cache = {}           
 
-    # --- helpers de iconos (mismo patrón que InputBar) ---
     def _load_icons(self):
         def load(name: str) -> pg.Surface:
             # intenta SVG y si no existe, PNG
@@ -33,7 +32,7 @@ class MessagesView:
         self._icon_scaled_cache[key] = scaled
         return scaled
 
-    # --- helpers de texto ---
+    #  helpers de texto 
     def _wrap(self, font, body, maxw):
         key = (id(font), body, maxw)
         cached = self.wrap_cache.get(key)
@@ -54,7 +53,7 @@ class MessagesView:
         self.wrap_cache[key] = lines
         return lines
 
-    # --- tarjeta de archivo ---
+    #  tarjeta de archivo 
     def _draw_file_card(self, surf, L, m, x_left, x_right, y):
         f = L["fonts"]; s = L["s"]
         is_tx = (m.get("side") == "tx")
@@ -77,14 +76,12 @@ class MessagesView:
         br = pg.Rect(int(bx), int(y), int(bw), int(card_h))
         rounded_rect(surf, br, color, L["r_lg"])
 
-        # icono de archivo (cargado como en InputBar)
         icon_size = fh + 8
         icon_surf = self._ensure_icon_scaled("file", icon_size)
         icon_rect = icon_surf.get_rect()
         icon_rect.topleft = (br.x + pad_bub, br.y + pad_bub)
         surf.blit(icon_surf, icon_rect)
 
-        # textos
         text(surf, name, f["p"], fg, (icon_rect.right + 10, icon_rect.y))
         text(surf, subtitle, f["xs"], fg, (icon_rect.right + 10, icon_rect.y + fh + 2))
 
@@ -94,7 +91,7 @@ class MessagesView:
 
         return br.bottom + int(16 * s)
 
-    # --- render general ---
+    #  render general 
     def draw(self, surf, L, messages):
         r = L["messages"]; pad = L["pad"]; f = L["fonts"]
         x_left  = r.x + pad * 2
@@ -107,7 +104,7 @@ class MessagesView:
                 y = self._draw_file_card(surf, L, m, x_left, x_right, y)
                 continue
 
-            # Mensaje de texto
+            # Mensaje 
             is_tx = (m.get("side") == "tx")
             body = m.get("text", "")
             font = f["p"]
@@ -118,7 +115,7 @@ class MessagesView:
             pad_bub = int(12 * L["s"])
             text_h = (len(lines) * font.get_linesize()) if lines else font.get_linesize()
 
-            # ancho mínimo (≈ 6 letras anchas)
+            # ancho mínimo 
             min_chars = 6
             min_text_w = font.size("M" * min_chars)[0]
             min_bw = int(min_text_w + pad_bub * 2)

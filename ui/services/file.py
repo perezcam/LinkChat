@@ -30,7 +30,7 @@ class FileService:
     _tid_by_server_id: Dict[str, str] = field(default_factory=dict, init=False)
     _pending_by_name_size: Dict[Tuple[str, int], str] = field(default_factory=dict, init=False)
 
-    # ---------- Suscripción a eventos del backend ----------
+    #  Suscripción a eventos del backend 
     def register_event_handlers(self, pump) -> None:
         """Conecta handlers al EventPump de la UI."""
         # TX
@@ -44,7 +44,7 @@ class FileService:
         # Ofertas (si hay fase de oferta/aceptación)
         pump.subscribe("file_offer", self.on_file_offer)
 
-    # ---------- API de envío ----------
+    #  API de envío 
     def send_path(self, dst_mac: str, path: str):
         """Si es carpeta -> folder_send; si es archivo -> file_send."""
         if os.path.isdir(path):
@@ -104,7 +104,7 @@ class FileService:
 
         return tid
 
-    # ---------- Handlers de eventos TX ----------
+    #  Handlers de eventos TX 
     def _on_tx_started(self, evt: dict):
         server_id = evt.get("file_id") or evt.get("id")
         name = evt.get("name") or evt.get("filename") or ""
@@ -153,7 +153,7 @@ class FileService:
         st.status = "done" if (ok is True or status == "ok") else "error"
         self._cleanup_tid_correlators(st)
 
-    # ---------- Handlers de eventos RX ----------
+    #  Handlers de eventos RX 
     def _on_rx_started(self, evt: dict):
         server_id = evt.get("file_id") or evt.get("id")
         name = evt.get("name") or evt.get("filename") or ""
@@ -194,16 +194,15 @@ class FileService:
         st.status = "done" if (ok is True or status == "ok") else "error"
         self._cleanup_tid_correlators(st)
 
-    # ---------- Ofertas / aceptación ----------
+    #  Ofertas - aceptación 
     def on_file_offer(self, evt: dict):
         """Auto-aceptación opcional (si tu backend lo requiere)."""
         offer_id = evt.get("id") or evt.get("file_id")
         auto_accept = os.environ.get("FILE_AUTO_ACCEPT", "1") == "1"
         if auto_accept and offer_id:
-            # Enviar de forma thread-safe (no tocar asyncio aquí)
             self.bridge.send_cmd_threadsafe({"type": "file_accept", "id": offer_id})
 
-    # ---------- Utilidades ----------
+    #  Utilidades 
     def _tid_from_evt(self, evt: dict, *, prefer_server: bool = True) -> Optional[str]:
         server_id = evt.get("file_id") or evt.get("id")
         if prefer_server and server_id and server_id in self._tid_by_server_id:
@@ -235,7 +234,7 @@ class FileService:
             self._tid_by_server_id.pop(st.server_id, None)
 
 
-# --------- helpers ---------
+#  helpers 
 def _to_int(v, default=None):
     try:
         return int(v)

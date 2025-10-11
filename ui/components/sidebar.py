@@ -9,7 +9,6 @@ class Sidebar:
         self.selected = 0
         self.scroll = 0
 
-        # Icono marca (enredate.svg)
         self._icon_brand = None
         p_brand = os.path.join(images_dir, "enredate.svg")
         try:
@@ -19,7 +18,6 @@ class Sidebar:
             pg.draw.rect(surf, CLR.get("accent", (120, 120, 120)), surf.get_rect(), border_radius=6)
             self._icon_brand = surf
 
-        # Icono "todos" (all.svg) para el botón
         self._icon_all = None
         p_all = os.path.join(images_dir, "all.svg")
         try:
@@ -29,16 +27,14 @@ class Sidebar:
             pg.draw.circle(surf, CLR.get("accent", (120, 120, 120)), (12, 12), 10)
             self._icon_all = surf
 
-        # <<< NUEVO: Icono de usuario para el avatar (user.svg) >>>
         self._icon_user = None
         p_user = os.path.join(images_dir, "user.svg")
         try:
             self._icon_user = pg.image.load(p_user).convert_alpha()
         except Exception:
-            # Si no existe, dejamos None y se verá solo el círculo
             self._icon_user = None
 
-    # ----------------- Helpers internos -----------------
+    #  Helpers internos 
     def _item_h(self, L) -> int:
         return int(68 * L["s"])
 
@@ -75,13 +71,13 @@ class Sidebar:
         except Exception:
             return rgb
 
-    # --- Helpers para soportar Contact o dict ---
+    #  Helpers para soportar Contact 
     def _get(self, c, key, default=None):
         if isinstance(c, dict):
             return c.get(key, default)
         return getattr(c, key, default)
 
-    # ----------------- Eventos -----------------
+    #  Eventos 
     def handle_event(self, e, L, contacts: list[Contact]):
         """
         Devuelve:
@@ -140,12 +136,12 @@ class Sidebar:
 
         return None
 
-    # ----------------- Dibujo -----------------
+    #  Dibujo 
     def draw(self, surf, L, contacts):
         r = L["sidebar"]; pad = L["pad"]; f = L["fonts"]
         rounded_rect(surf, r, CLR["sidebar"], 0)
 
-        # Encabezado: "EnRedate" + icono enredate.svg DESPUÉS del texto
+        # Encabezado
         title_y = r.y + L["pad"]
         icon_h = max(18, int(f["h2"].get_linesize() * 0.9))
         icon_w = icon_h
@@ -180,7 +176,7 @@ class Sidebar:
 
             divider(surf, row.x+pad, row.bottom-1, row.right-pad)
 
-            # Avatar circular + icono user.svg dentro
+            # Avatar circular 
             av_r = pg.Rect(r.x+pad, row.y+pad, int(42*L["s"]), int(42*L["s"]))
             pg.draw.circle(surf, CLR["accent"], av_r.center, av_r.w//2)
 
@@ -210,7 +206,7 @@ class Sidebar:
         btn = pg.Rect(r.x+pad, r.bottom-pad-btn_h, r.w-2*pad, btn_h)
 
         base_primary = CLR.get("primary", (40, 105, 255))
-        btn_bg = CLR.get("primary_dark", self._darken(base_primary, 0.8))  # un poco más claro
+        btn_bg = CLR.get("primary_dark", self._darken(base_primary, 0.8)) 
         btn_fg = CLR.get("on_primary", (255, 255, 255))
 
         rounded_rect(surf, btn, btn_bg, L["r_sm"])

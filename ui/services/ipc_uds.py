@@ -23,11 +23,9 @@ class UDSBridge:
         self._evq: "queue.Queue[dict]" = queue.Queue()
         self._task: Optional[asyncio.Task] = None
         self._stopping: bool = False
-
-        # Loop donde vive el bridge (se fija en start())
         self.loop: Optional[asyncio.AbstractEventLoop] = None
 
-    # -------- lifecycle --------
+    #  lifecycle 
     async def start(self) -> None:
         """Conecta al UDS con backoff y lanza el bucle lector."""
         self.loop = asyncio.get_running_loop()
@@ -73,7 +71,7 @@ class UDSBridge:
             await self._close_streams()
             logging.info("[IPC] readerLoop terminado.")
 
-    # -------- API pública --------
+    #  API 
     async def send_cmd(self, cmd: dict) -> None:
         """
         Envía un comando (dict) como JSONL al backend.
@@ -119,7 +117,7 @@ class UDSBridge:
                 await self._task
         await self._close_streams()
 
-    # -------- helpers --------
+    #  helpers 
     async def _close_streams(self) -> None:
         """Cierra writer y resetea referencias."""
         if self._writer:

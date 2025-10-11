@@ -10,7 +10,7 @@ class ChatService:
     bridge: "UDSBridge"
     messages_by_mac: Dict[str, List[ChatMessage]] = field(default_factory=dict)
 
-    # --------- Helpers internos ---------
+    #helpers
     def _now_hhmm(self) -> str:
         return datetime.now().strftime("%H:%M")
 
@@ -21,20 +21,20 @@ class ChatService:
         # Mantén una única puerta de salida hacia el IPC.
         asyncio.run(self.bridge.send_cmd(cmd))
 
-    # --------- Eventos entrantes (desde IPC) ---------
+    #  Eventos entrantes (desde IPC) 
     def on_chat(self, evt: dict):
         mac = str(evt.get("src", ""))
         text = str(evt.get("text", ""))
         self._append(mac, ChatMessage("rx", text, self._now_hhmm()))
 
-    # --------- Envío 1-a-1 ---------
+    #  Envío 1-a-1 
     def send_text(self, dst_mac: str, text: str):
-        # eco local (como ya lo tenías)
+        # eco local 
         self._append(dst_mac, ChatMessage("tx", text, self._now_hhmm()))
         # envío por IPC
         self._send_cmd({"type": "send_text", "dst": dst_mac, "body": text})
 
-    # --------- Envío a TODOS (solo texto) ---------
+    #  Envío a TODOS 
     def send_text_all(self, text: str, *, active_since: Optional[float] = None, echo: bool = False):
         """
         Envía 'text' a todos los vecinos activos. Si 'active_since' se especifica (seg),

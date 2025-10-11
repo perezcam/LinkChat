@@ -19,7 +19,7 @@ class Composer:
       - input_bar (existente)
 
     API:
-      - set_broadcast_mode(bool)   # <- NUEVO
+      - set_broadcast_mode(bool)  
       - handle_event(e) -> ("attach", None) | ("send", {"text":str,"files":[str,...]}) | None
       - draw(surf, L)
       - add_files(list[str])
@@ -34,8 +34,7 @@ class Composer:
     def __init__(self, input_bar, images_dir="images"):
         self.input_bar = input_bar
         self._files: list[FileChip] = []
-
-        # Ícono del archivo (como en InputBar: cargamos desde images/*.svg)
+        
         p = os.path.join(images_dir, "file.svg")
         try:
             self._file_icon = pg.image.load(p).convert_alpha()
@@ -48,12 +47,12 @@ class Composer:
         self._r = None
         self._r_chips = None
 
-        # --- NUEVO: flag de broadcast ---
+        # flag de broadcast
         self.broadcast_mode: bool = False
 
-    # ---------------- broadcast ----------------
+    #  broadcast 
     def set_broadcast_mode(self, on: bool):
-        """Activa/desactiva modo broadcast (solo texto). Limpia chips al activarse."""
+        """Activa y desactiva modo broadcast (solo texto), limpia chips al activarse."""
         on = bool(on)
         if on and self._files:
             self.clear_files()
@@ -62,9 +61,9 @@ class Composer:
         if hasattr(self.input_bar, "set_placeholder"):
             self.input_bar.set_placeholder("Mensaje a todos…" if on else "Escribe un mensaje…")
 
-    # ---------------- files ----------------
+    #  files 
     def add_files(self, paths: list[str]):
-        # En broadcast no aceptamos adjuntos
+        # En broadcast no se aceptan adjuntos
         if self.broadcast_mode:
             return
         for p in paths:
@@ -76,7 +75,7 @@ class Composer:
     def get_files(self) -> list[str]:
         return [c.path for c in self._files]
 
-    # ---------------- layout ----------------
+    #  layout 
     def _compute_rects(self, L):
         # Asegura que InputBar compute primero sus rects
         self.input_bar._compute_rects(L)
@@ -86,7 +85,7 @@ class Composer:
         s = L["s"]
         chip_h = int(36 * s)
 
-        # Fila donde dibujamos chips (encima de la barra)
+        # dibujar chips
         # Si es broadcast, no hay zona de chips.
         if self.broadcast_mode:
             self._r_chips = None
@@ -120,7 +119,7 @@ class Composer:
             )
             x += w + 8
 
-    # --------------- eventos ----------------
+    # eventos 
     def handle_event(self, e):
         # Gestiona clic para cerrar chips (solo si hay zona de chips activa)
         if not self.broadcast_mode and e.type == pg.MOUSEBUTTONDOWN and e.button == 1 and self._r_chips:
@@ -130,7 +129,7 @@ class Composer:
                         self._files.pop(idx)
                         return None
 
-        # Delegamos a la barra (adjuntar / enviar / escribir)
+        # Delegamos a la barra adjuntar escribir o enviar
         out = self.input_bar.handle_event(e)
         if not out:
             return None
@@ -147,14 +146,13 @@ class Composer:
             txt = (payload or "").strip()
             files = self.get_files()
 
-            # En broadcast: debe haber texto (no adjuntos)
+            # En broadcast: debe haber texto 
             if self.broadcast_mode:
                 if not txt:
                     return None
                 self.input_bar.value = ""
                 return ("send", {"text": txt, "files": []})
 
-            # No broadcast: permitir solo archivos o texto+archivos
             if not txt and not files:
                 return None
 
@@ -166,11 +164,10 @@ class Composer:
 
         return None
 
-    # --------------- dibujo -----------------
+    #  dibujo 
     def draw(self, surf, L):
         self._compute_rects(L)
 
-        # Capa de chips (solo si NO es broadcast y hay archivos)
         if (not self.broadcast_mode) and self._files and self._r_chips:
             rounded_rect(surf, self._r_chips, CLR["panel"], L["r_sm"])
             for c in self._files:
@@ -183,15 +180,12 @@ class Composer:
                     icon = pg.transform.smoothscale(c.icon, (icon_size, icon_size))
                     surf.blit(icon, (c.rect.x + 6, c.rect.y + 5))
 
-                # Texto
                 text(
                     surf, c._display_name, L["fonts"]["p"], CLR["text"],
                     (c.rect.x + 12 + icon_size, c.rect.centery), "midleft"
                 )
 
-                # Botón cerrar
                 pg.draw.circle(surf, CLR["accent"], c.close_rect.center, c.close_rect.w // 2)
                 text(surf, "×", L["fonts"]["p"], CLR["text"], c.close_rect.center, "center")
 
-        # Barra de entrada
         self.input_bar.draw(surf, L)
