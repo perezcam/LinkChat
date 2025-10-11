@@ -59,10 +59,6 @@ def run(
     manager = pygame_gui.UIManager(screen.get_size())
     picker = AttachmentPicker(manager)
 
-    # Suscribir FileService a eventos de transferencia (si existe helper)
-    if hasattr(files, "register_event_handlers"):
-        files.register_event_handlers(pump)
-
     # Fallback de eventos sin "type"
     if hasattr(pump, "fallback"):
         pump.fallback(lambda ev: None if (isinstance(ev, dict) and "type" not in ev)
