@@ -13,7 +13,6 @@ class RosterService:
     async def bootstrap(self):
         await self.bridge.send_cmd({"type":"neighbors_get"})
 
-    # === Handlers que registra el EventPump ===
     def on_neighbors_changed(self, evt: dict):
         rows = evt.get("rows", [])
         for r in rows:

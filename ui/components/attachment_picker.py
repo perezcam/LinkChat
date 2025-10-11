@@ -15,7 +15,6 @@ class AttachmentPicker:
         self.attachments: list[str] = []
         self._last_mgr_size: tuple[int, int] | None = None
 
-    # --- helpers ---
     def _mgr_size(self) -> tuple[int, int]:
         try:
             return self.manager.get_window_resolution()
@@ -26,12 +25,10 @@ class AttachmentPicker:
     def _apply_modal_fixed(self):
         if not self.dialog:
             return
-        # modal
         try:
             self.dialog.set_blocking(True)
         except Exception:
             pass
-        # no movible
         try:
             self.dialog.draggable = False
         except Exception:
@@ -43,16 +40,13 @@ class AttachmentPicker:
         w, h = self._mgr_size()
         ww = max(480, int(w * self.size_ratio[0]))
         hh = max(360, int(h * self.size_ratio[1]))
-        # primero dimensiona, luego centra
         try:
             self.dialog.set_dimensions((ww, hh))
         except Exception:
             pass
-        # centra relativo al viewport actual del UIManager
         try:
             self.dialog.center_window()
         except Exception:
-            # fallback manual por si tu versión no trae center_window()
             x = (w - ww) // 2
             y = (h - hh) // 2
             try:
@@ -61,12 +55,12 @@ class AttachmentPicker:
                 pass
         self._apply_modal_fixed()
 
-    # --- API ---
+    #API
     def open(self):
         if self.dialog is not None:
             self._recenter_and_resize()
             return
-        # crea con un rect provisional; se ajusta justo después
+        # crea con un rect provisional
         w, h = self._mgr_size()
         tmp = pg.Rect(0, 0, int(w * 0.5), int(h * 0.5))
         self.dialog = pygame_gui.windows.UIFileDialog(

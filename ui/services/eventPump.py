@@ -8,10 +8,10 @@ class EventPump:
     """
     Extrae eventos crudos del UDSBridge y los reparte a servicios
     suscritos por 'type'
-    - subscribe("chat", handler)             # 1..N handlers por tipo
+    - subscribe("chat", handler)            
     - subscribe_many({"chat":h1, "neighbors_changed":h2})
-    - pump(bridge, max_events=100)           # drena hasta N eventos pendientes
-    - fallback(handler)                      # para eventos sin handler
+    - pump(bridge, max_events=100)         
+    - fallback(handler)                      
     """
     def __init__(self):
         self._subs: Dict[str, List[Handler]] = {}
