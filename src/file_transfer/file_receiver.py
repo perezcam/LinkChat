@@ -25,7 +25,7 @@ class FileReceiver:
         self._service_threads.add_message_handler(MessageType.FILE_DATA, self._on_data)
         self._service_threads.add_message_handler(MessageType.FILE_META, self._on_meta)
 
-    # -------- ACK / FIN --------
+    # ---------------- low-level ACK/FIN ----------------
     def _send_ack(self, file_id: str, dst_mac: str, next_needed: int):
         payload = f"file_id={file_id}\nnext_needed={next_needed}\n".encode("utf-8")
         frame = self._service_threads.file_transfer_handler.get_frame(dst_mac, MessageType.ACK, payload)
@@ -46,9 +46,9 @@ class FileReceiver:
             )
         self._service_threads.queue_frame_for_sending(frame)
 
-    # -------- helpers paths --------
+    # ---------------- helpers de paths ----------------
     def _sanitize_relative_path(self, raw_path: str | None) -> str | None:
-        """Valida que sea relativa POSIX (no absoluta, sin '..', sin partes vacías)."""
+        """Valida una ruta relativa POSIX (no absoluta, sin '..', sin partes vacías)."""
         if not raw_path:
             return None
         p = pathlib.PurePosixPath(raw_path)
@@ -59,16 +59,30 @@ class FileReceiver:
                 return None
         return p.as_posix()
 
+    def _to_posix_relative(self, full_path: str, base_dir_for_rel: str) -> str | None:
+        """
+        Convierte un path absoluto/normalizado a relativo POSIX respecto a base_dir_for_rel.
+        Devuelve None si no puede relativizar o si escapa del base.
+        """
+        try:
+            full_real = os.path.realpath(os.path.normpath(full_path))
+            base_real = os.path.realpath(os.path.normpath(base_dir_for_rel))
+            if not (full_real == base_real or full_real.startswith(base_real + os.sep)):
+                return None
+            rel = os.path.relpath(full_real, base_real)
+            return self._sanitize_relative_path(pathlib.PurePath(rel).as_posix())
+        except Exception:
+            return None
+
     def _ensure_inside_base_dir(self, candidate_path: str) -> bool:
+        """Asegura que candidate_path quede dentro de self.base_dir."""
         base_real = os.path.realpath(self.base_dir)
         cand_real = os.path.realpath(candidate_path)
         return cand_real == base_real or cand_real.startswith(base_real + os.sep)
 
-    # -------- META --------
+    # ---------------- META ----------------
     def _on_meta(self, frame: FrameSchema):
         kv: Dict[str, Any] = parse_payload(frame.payload.decode("utf-8"))
-
-        # requeridos
         required = ["file_id", "name", "size", "sha256", "chunk_size", "total"]
         missing = [k for k in required if kv.get(k) is None]
         if missing:
@@ -81,22 +95,42 @@ class FileReceiver:
         name = kv["name"]
         sha256_hex = kv["sha256"]
 
-        # path relativo provisto por el sender (preferir 'rel', fallback 'path')
-        rel_path = self._sanitize_relative_path(kv.get("rel") or kv.get("path"))
+        # 1) PRIORIDAD: usar 'path' o 'rel' si el emisor los envía (flujo que ya te funcionaba)
+        rel_path = None
+        for cand in (kv.get("path"), kv.get("rel")):
+            rel_path = self._sanitize_relative_path(cand)
+            if rel_path:
+                break
 
-        # validaciones numéricas
+        # 2) Si no vienen, soporta 'full_path' + 'folder_path' preservando la carpeta raíz
+        if rel_path is None:
+            full_path = kv.get("full_path")
+            folder_path = kv.get("folder_path")
+            if full_path and folder_path:
+                base_root = os.path.normpath(folder_path)                  # p.ej. /home/me/CarpetaElegida
+                rel_inner = self._to_posix_relative(full_path, base_root)  # p.ej. "sub/archivo.ext"
+                if rel_inner is None:
+                    rel_inner = ""  # si justo apuntaba a la raíz (raro en META de archivo)
+                folder_name = pathlib.PurePath(base_root).name             # "CarpetaElegida"
+                rel_candidate = (
+                    (pathlib.PurePosixPath(folder_name) / rel_inner).as_posix()
+                    if rel_inner else pathlib.PurePosixPath(folder_name).as_posix()
+                )
+                rel_path = self._sanitize_relative_path(rel_candidate)
+
+        # ---- Validaciones numéricas ----
         try:
             size = int(kv["size"])
             chunk_size = int(kv["chunk_size"])
             total = int(kv["total"])
         except ValueError:
-            self._send_fin(file_id, frame.src_mac, "error", "bad_meta_non_numeric")
-            emit_error(file_id=file_id, src=frame.src_mac, name=name, rel=rel_path, error="bad_meta_non_numeric")
+            self._send_fin(file_id or "unknown", frame.src_mac, "error", "bad_meta_non_numeric")
+            emit_error(file_id=file_id or "unknown", src=frame.src_mac, name=name, rel=rel_path, error="bad_meta_non_numeric")
             return
 
         if not file_id or not name or not sha256_hex:
-            self._send_fin(file_id, frame.src_mac, "error", "bad_meta_empty_str")
-            emit_error(file_id=file_id, src=frame.src_mac, name=name, rel=rel_path, error="bad_meta_empty_str")
+            self._send_fin(file_id or "unknown", frame.src_mac, "error", "bad_meta_empty_str")
+            emit_error(file_id=file_id or "unknown", src=frame.src_mac, name=name, rel=rel_path, error="bad_meta_empty_str")
             return
 
         if chunk_size <= 0 or size < 0 or total < 0:
@@ -104,7 +138,7 @@ class FileReceiver:
             emit_error(file_id=file_id, src=frame.src_mac, name=name, rel=rel_path, error="bad_meta_ranges")
             return
 
-        # destino final (si no vino rel/path, usar name)
+        # ---- Destino final
         dest_rel = rel_path if rel_path else name
         dest_path = os.path.normpath(os.path.join(self.base_dir, dest_rel))
 
@@ -118,20 +152,22 @@ class FileReceiver:
         open(temp_path, "wb").close()
 
         logging.debug(
-            "[META<-] file_id=%s name=%s total=%d chunk_size=%d dest=%s rel=%r",
-            file_id, name, total, chunk_size, dest_path, dest_rel
+            "[META<-] file_id=%s name=%s total=%d chunk_size=%d dest=%s",
+            file_id, name, total, chunk_size, dest_path
         )
 
         emit_started(file_id=file_id, src=frame.src_mac, name=name, rel=dest_rel)
 
-        # archivo vacío
+        # ---- Archivo vacío ----
         if total == 0:
             calc = get_file_hash(temp_path)
             if calc.lower() == sha256_hex.lower():
                 os.replace(temp_path, dest_path)
                 self._send_fin(file_id, frame.src_mac, "ok")
-                emit_progress(file_id=file_id, src=frame.src_mac, name=name, rel=dest_rel,
-                              acked=0, total=0, progress=1.0)
+                emit_progress(
+                    file_id=file_id, src=frame.src_mac, name=name, rel=dest_rel,
+                    acked=0, total=0, progress=1.0
+                )
                 emit_finished(file_id=file_id, src=frame.src_mac, name=name, rel=dest_rel, status="ok")
             else:
                 self._send_fin(file_id, frame.src_mac, "error", "hash_mismatch")
@@ -139,7 +175,7 @@ class FileReceiver:
             self.ctx_by_id.pop(file_id, None)
             return
 
-        # contexto normal
+        # ---- Contexto normal ----
         ctx = FileRcvCtxSchema(
             file_id=file_id,
             src_mac=frame.src_mac,
@@ -152,12 +188,12 @@ class FileReceiver:
             temp_path=temp_path,
             dest_path=dest_path
         )
-        setattr(ctx, "rel", dest_rel)  # para eventos UI
+        setattr(ctx, "rel", dest_rel)
         self.ctx_by_id[file_id] = ctx
 
         self._send_ack(file_id, frame.src_mac, next_needed=0)
 
-    # -------- DATA --------
+    # ---------------- DATA ----------------
     def _on_data(self, frame: FrameSchema):
         payload = frame.payload
         sep = payload.find(b"\n\n")
@@ -166,9 +202,9 @@ class FileReceiver:
             emit_error(file_id="unknown", src=frame.src_mac, name=None, rel=None, error="bad_payload")
             return
 
-        header = payload[:sep].decode("utf-8", "ignore")
+        header_bytes = payload[:sep]
         data = payload[sep + 2:]
-        kv = parse_payload(header)
+        kv = parse_payload(header_bytes.decode("utf-8"))
 
         file_id = kv.get("file_id")
         if not file_id or file_id not in self.ctx_by_id:
@@ -219,8 +255,20 @@ class FileReceiver:
             if calc.lower() == ctx.sha256_expected.lower():
                 os.replace(ctx.temp_path, ctx.dest_path)
                 self._send_fin(ctx.file_id, frame.src_mac, "ok")
-                emit_finished(file_id=ctx.file_id, src=ctx.src_mac, name=ctx.name, rel=rel_for_events, status="ok")
+                emit_finished(
+                    file_id=ctx.file_id,
+                    src=ctx.src_mac,
+                    name=ctx.name,
+                    rel=rel_for_events,
+                    status="ok"
+                )
             else:
                 self._send_fin(ctx.file_id, frame.src_mac, "error", "hash_mismatch")
-                emit_error(file_id=ctx.file_id, src=ctx.src_mac, name=ctx.name, rel=rel_for_events, error="hash_mismatch")
+                emit_error(
+                    file_id=ctx.file_id,
+                    src=ctx.src_mac,
+                    name=ctx.name,
+                    rel=rel_for_events,
+                    error="hash_mismatch"
+                )
             self.ctx_by_id.pop(ctx.file_id, None)

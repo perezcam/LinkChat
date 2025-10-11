@@ -46,12 +46,6 @@ def run(
     chat: ChatService,
     files: FileService,
 ):
-    """
-    Orquestador gráfico:
-      - Procesa input de usuario.
-      - Drena eventos con EventPump (neighbors_changed, chat, file_*).
-      - Dibuja usando el estado de los servicios (roster, chat, files).
-    """
     pg.init()
     screen = init_window()
     clock = pg.time.Clock()
@@ -68,7 +62,6 @@ def run(
     header = ChatHeader()
     messages = MessagesView()
 
-    # InputBar sigue existiendo pero ahora lo envuelve Composer
     inputbar = InputBar(images_dir="images")
     composer = Composer(inputbar, images_dir="images")
 
@@ -100,7 +93,7 @@ def run(
     # Índices TX:
     progress_index_tx: Dict[str, ChatMessage] = {}     # file_id -> ChatMessage
     name_index_tx = defaultdict(list)                  # name -> [ChatMessage]
-    rel_index_tx  = defaultdict(list)                  # rel  -> [ChatMessage] (si usas folder_send)
+    rel_index_tx  = defaultdict(list)                  # rel  -> [ChatMessage]
     last_tick_tx: Dict[str, float] = {}                # file_id -> last progress ts
 
     # Índices RX:
@@ -108,6 +101,17 @@ def run(
     name_index_rx = defaultdict(list)                  # (from_mac, name) -> [ChatMessage]
     rel_index_rx  = defaultdict(list)                  # (from_mac, rel)  -> [ChatMessage]
     last_tick_rx: Dict[str, float] = {}                # file_id -> last progress ts
+
+    # NUEVO: agrupar por carpeta (RX)
+    folder_card_rx: Dict[tuple, ChatMessage] = {}      # (src, folder_root) -> ChatMessage
+    folder_stats_rx: Dict[tuple, Dict[str, int]] = {}  # (src, folder_root) -> {"total": n, "done": m}
+    fileid_to_folder_rx: Dict[str, tuple] = {}         # file_id -> (src, folder_root)
+
+    def _folder_root(rel: str | None):
+        if not rel:
+            return None
+        rel = rel.strip().lstrip("./")
+        return rel.split("/", 1)[0] if rel else None
 
     # Watchdogs
     EPSILON_SECS = 1.0
@@ -151,7 +155,7 @@ def run(
         if fid and fid in progress_index_rx:
             return progress_index_rx[fid]
 
-        src = ev.get("src") or ev.get("from") or ev.get("sender")  # según backend
+        src = ev.get("src") or ev.get("from") or ev.get("sender")
         rel = ev.get("rel")
         name = ev.get("name")
 
@@ -237,26 +241,64 @@ def run(
     # ---------- Handlers RX (recibiendo) ----------
     def on_file_rx_started(ev: dict):
         """
-        Esperado: {"type":"file_rx_started","file_id":"...","src":"aa:bb:...","name":"archivo.ext","rel":...}
-        Creamos la tarjeta en el hilo con el MAC del remitente (side="rx").
+        Esperado: {"type":"file_rx_started","file_id":"...","src":"aa:bb:...","name":"archivo.ext","rel":"Carpeta/sub/archivo"}
+        Para carpetas: usamos UNA tarjeta por carpeta raíz (según 'rel').
         """
         src = ev.get("src") or ev.get("from") or ev.get("sender")
-        name = ev.get("name") or "archivo"
         if not src:
             return
-        msg = append_incoming_file_card(src, name, "Recibiendo…")
-        # indexaciones auxiliares
+        fid = ev.get("file_id", "")
         rel = ev.get("rel")
+        root = _folder_root(rel)
+
+        if root:
+            key = (src, root)
+            msg = folder_card_rx.get(key)
+            if not msg:
+                msg = append_incoming_file_card(src, root, "Recibiendo… 0/1")
+                folder_card_rx[key] = msg
+                # útil si alguna vez resolvemos por rel exacto = root
+                rel_index_rx[(src, root)].append(msg)
+
+            # contadores
+            st = folder_stats_rx.get(key)
+            if not st:
+                st = {"total": 0, "done": 0}
+                folder_stats_rx[key] = st
+            st["total"] += 1
+            _update_msg_subtitle(msg, f"Recibiendo… {st['done']}/{st['total']}")
+
+            # mapea file_id -> tarjeta carpeta
+            fileid_to_folder_rx[fid] = key
+            progress_index_rx[fid] = msg
+            _touch_rx(fid)
+            return
+
+        # Fallback: archivo suelto (sin carpeta)
+        name = ev.get("name") or "archivo"
+        msg = append_incoming_file_card(src, name, "Recibiendo…")
         if rel:
             rel_index_rx[(src, rel)].append(msg)
-        progress_index_rx[ev.get("file_id", "")] = msg
-        _touch_rx(ev.get("file_id", ""))
+        progress_index_rx[fid] = msg
+        _touch_rx(fid)
 
     def on_file_rx_progress(ev: dict):
+        fid = ev.get("file_id")
+        # Si es parte de una carpeta, solo refrescamos el "tick"
+        if fid in fileid_to_folder_rx:
+            _touch_rx(fid)
+            key = fileid_to_folder_rx[fid]
+            msg = folder_card_rx.get(key)
+            if not msg:
+                return
+            st = folder_stats_rx.get(key, {"total": 1, "done": 0})
+            _update_msg_subtitle(msg, f"Recibiendo… {st['done']}/{st['total']}")
+            return
+
+        # Archivo suelto
         msg = _resolve_msg_for_event_rx(ev)
         if not msg:
             return
-        fid = ev.get("file_id")
         if fid:
             _touch_rx(fid)
 
@@ -265,42 +307,67 @@ def run(
             prog = ev.get("progress")
             if isinstance(prog, (int, float)):
                 pct = prog * 100.0
-
         acked = ev.get("acked")
         total = ev.get("total") or 0
 
-        if pct is None:
-            subtitle = "Recibiendo…"
-        else:
-            pct_i = int(max(0, min(100, pct)))
-            subtitle = f"{pct_i}% ({acked}/{total} chunks)" if (acked is not None and total) else f"{pct_i}%"
-
+        subtitle = "Recibiendo…" if pct is None else (
+            f"{int(max(0, min(100, pct)))}% ({acked}/{total} chunks)"
+            if (acked is not None and total) else f"{int(max(0, min(100, pct)))}%"
+        )
         _update_msg_subtitle(msg, subtitle)
 
+    def _folder_mark_done(fid: str):
+        """Incrementa done para la carpeta asociada a fid y actualiza el subtítulo."""
+        key = fileid_to_folder_rx.get(fid)
+        if not key:
+            return
+        msg = folder_card_rx.get(key)
+        st = folder_stats_rx.get(key)
+        if not msg or not st:
+            return
+        st["done"] = max(0, st["done"] + 1)
+        if st["done"] >= st["total"]:
+            _update_msg_subtitle(msg, "Recibido")
+        else:
+            _update_msg_subtitle(msg, f"Recibiendo… {st['done']}/{st['total']}")
+
     def on_file_rx_finished(ev: dict):
+        fid = ev.get("file_id")
+        if fid in fileid_to_folder_rx:
+            _folder_mark_done(fid)
+            # limpieza por fid
+            progress_index_rx.pop(fid, None)
+            last_tick_rx.pop(fid, None)
+            return
+
+        # Archivo suelto
         msg = _resolve_msg_for_event_rx(ev)
         if msg:
             _update_msg_subtitle(msg, "Recibido")
-        fid = ev.get("file_id")
         if fid:
             progress_index_rx.pop(fid, None)
             last_tick_rx.pop(fid, None)
 
     def on_file_rx_done(ev: dict):
-        msg = _resolve_msg_for_event_rx(ev)
-        if msg:
-            _update_msg_subtitle(msg, "Recibido")
-        fid = ev.get("file_id")
-        if fid:
-            progress_index_rx.pop(fid, None)
-            last_tick_rx.pop(fid, None)
+        # alias de finished
+        on_file_rx_finished(ev)
 
     def on_file_rx_error(ev: dict):
+        fid = ev.get("file_id")
+        if fid in fileid_to_folder_rx:
+            key = fileid_to_folder_rx.get(fid)
+            msg = folder_card_rx.get(key) if key else None
+            if msg:
+                st = folder_stats_rx.get(key, {"total": 1, "done": 0})
+                _update_msg_subtitle(msg, f"Error ({st['done']}/{st.get('total', 1)})")
+            progress_index_rx.pop(fid, None)
+            last_tick_rx.pop(fid, None)
+            return
+
         msg = _resolve_msg_for_event_rx(ev)
         if msg:
             err = ev.get("error") or "Error"
             _update_msg_subtitle(msg, err)
-        fid = ev.get("file_id")
         if fid:
             progress_index_rx.pop(fid, None)
             last_tick_rx.pop(fid, None)
@@ -357,7 +424,6 @@ def run(
                     picker.open()
 
                 elif kind == "send" and roster.selected_mac:
-                    # payload = {"text": str, "files": [str,...]}
                     text_to_send = (payload.get("text") or "").strip()
                     files_to_send = payload.get("files") or []
 
@@ -397,8 +463,12 @@ def run(
                 _update_msg_subtitle(msg, "Enviado")
                 progress_index_tx.pop(fid, None)
                 last_tick_tx.pop(fid, None)
-        # RX: marca Recibido si no hay progreso hace ε seg.
+
+        # RX: evita cerrar anticipadamente tarjetas de carpeta
         for fid, msg in list(progress_index_rx.items()):
+            # NUEVO: si este file_id pertenece a una carpeta, omitimos el watchdog
+            if fid in fileid_to_folder_rx:
+                continue
             ts = last_tick_rx.get(fid)
             if ts is not None and (now - ts) > EPSILON_SECS:
                 _update_msg_subtitle(msg, "Recibido")
@@ -427,14 +497,11 @@ def run(
         current_msgs = chat.messages_by_mac.get(roster.selected_mac or "", [])
         messages.draw(screen, L, [m.__dict__ for m in current_msgs])
 
-        # Barra + chips de adjuntos
         composer.draw(screen, L)
 
-        # UI Manager + File dialog
         manager.update(time_delta)
         picker.update(time_delta)
 
-        # Si el file dialog devolvió rutas, agrégalas como chips
         new_files = picker.take_attachments()
         if new_files:
             composer.add_files(new_files)
