@@ -19,6 +19,7 @@ class Composer:
       - input_bar (existente)
 
     API:
+      - set_broadcast_mode(bool)   # <- NUEVO
       - handle_event(e) -> ("attach", None) | ("send", {"text":str,"files":[str,...]}) | None
       - draw(surf, L)
       - add_files(list[str])
@@ -26,8 +27,9 @@ class Composer:
       - get_files() -> list[str]
 
     Reglas:
+      - En broadcast: SOLO texto (sin adjuntos).
       - No se puede enviar mensaje vacío (sin texto y sin archivos).
-      - Sí se puede enviar solo archivos (texto vacío).
+      - Sí se puede enviar solo archivos (texto vacío) cuando NO es broadcast.
     """
     def __init__(self, input_bar, images_dir="images"):
         self.input_bar = input_bar
@@ -46,8 +48,25 @@ class Composer:
         self._r = None
         self._r_chips = None
 
+        # --- NUEVO: flag de broadcast ---
+        self.broadcast_mode: bool = False
+
+    # ---------------- broadcast ----------------
+    def set_broadcast_mode(self, on: bool):
+        """Activa/desactiva modo broadcast (solo texto). Limpia chips al activarse."""
+        on = bool(on)
+        if on and self._files:
+            self.clear_files()
+        self.broadcast_mode = on
+        # Placeholder opcional
+        if hasattr(self.input_bar, "set_placeholder"):
+            self.input_bar.set_placeholder("Mensaje a todos…" if on else "Escribe un mensaje…")
+
     # ---------------- files ----------------
     def add_files(self, paths: list[str]):
+        # En broadcast no aceptamos adjuntos
+        if self.broadcast_mode:
+            return
         for p in paths:
             self._files.append(FileChip(p, self._file_icon))
 
@@ -68,8 +87,16 @@ class Composer:
         chip_h = int(36 * s)
 
         # Fila donde dibujamos chips (encima de la barra)
-        self._r_chips = pg.Rect(r_bar.x, r_bar.y - pad - chip_h, r_bar.w, chip_h)
+        # Si es broadcast, no hay zona de chips.
+        if self.broadcast_mode:
+            self._r_chips = None
+        else:
+            self._r_chips = pg.Rect(r_bar.x, r_bar.y - pad - chip_h, r_bar.w, chip_h)
+
         self._r = r_bar
+
+        if self.broadcast_mode or not self._r_chips:
+            return
 
         # Posicionar cada chip
         x = self._r_chips.x + pad
@@ -81,7 +108,6 @@ class Composer:
             # Truncado del nombre para que quepa en el chip
             name = c.name
             while font.size(name)[0] > maxw - (chip_h + 12 + 20) and len(name) > 6:
-                # quita 1 char antes del sufijo de truncado
                 name = name[:-2] + "…"
             c._display_name = name
 
@@ -96,8 +122,8 @@ class Composer:
 
     # --------------- eventos ----------------
     def handle_event(self, e):
-        # Gestiona clic para cerrar chips
-        if e.type == pg.MOUSEBUTTONDOWN and e.button == 1 and self._r_chips:
+        # Gestiona clic para cerrar chips (solo si hay zona de chips activa)
+        if not self.broadcast_mode and e.type == pg.MOUSEBUTTONDOWN and e.button == 1 and self._r_chips:
             if self._r_chips.collidepoint(e.pos):
                 for idx, c in enumerate(list(self._files)):
                     if c.close_rect.collidepoint(e.pos):
@@ -112,15 +138,24 @@ class Composer:
         kind, payload = out
 
         if kind == "attach":
+            # En broadcast ignoramos completamente el attach
+            if self.broadcast_mode:
+                return None
             return ("attach", None)
 
         if kind == "send":
-            # Permitir enviar aunque el texto esté vacío si hay archivos
             txt = (payload or "").strip()
             files = self.get_files()
 
+            # En broadcast: debe haber texto (no adjuntos)
+            if self.broadcast_mode:
+                if not txt:
+                    return None
+                self.input_bar.value = ""
+                return ("send", {"text": txt, "files": []})
+
+            # No broadcast: permitir solo archivos o texto+archivos
             if not txt and not files:
-                # Ni texto ni adjuntos -> no enviar
                 return None
 
             # Limpiar input y chips SOLO si realmente se envía
@@ -135,8 +170,8 @@ class Composer:
     def draw(self, surf, L):
         self._compute_rects(L)
 
-        # Capa de chips
-        if self._files:
+        # Capa de chips (solo si NO es broadcast y hay archivos)
+        if (not self.broadcast_mode) and self._files and self._r_chips:
             rounded_rect(surf, self._r_chips, CLR["panel"], L["r_sm"])
             for c in self._files:
                 # Chip

@@ -257,10 +257,8 @@ def run(
             if not msg:
                 msg = append_incoming_file_card(src, root, "Recibiendo… 0/1")
                 folder_card_rx[key] = msg
-                # útil si alguna vez resolvemos por rel exacto = root
                 rel_index_rx[(src, root)].append(msg)
 
-            # contadores
             st = folder_stats_rx.get(key)
             if not st:
                 st = {"total": 0, "done": 0}
@@ -268,7 +266,6 @@ def run(
             st["total"] += 1
             _update_msg_subtitle(msg, f"Recibiendo… {st['done']}/{st['total']}")
 
-            # mapea file_id -> tarjeta carpeta
             fileid_to_folder_rx[fid] = key
             progress_index_rx[fid] = msg
             _touch_rx(fid)
@@ -284,7 +281,6 @@ def run(
 
     def on_file_rx_progress(ev: dict):
         fid = ev.get("file_id")
-        # Si es parte de una carpeta, solo refrescamos el "tick"
         if fid in fileid_to_folder_rx:
             _touch_rx(fid)
             key = fileid_to_folder_rx[fid]
@@ -295,7 +291,6 @@ def run(
             _update_msg_subtitle(msg, f"Recibiendo… {st['done']}/{st['total']}")
             return
 
-        # Archivo suelto
         msg = _resolve_msg_for_event_rx(ev)
         if not msg:
             return
@@ -317,7 +312,6 @@ def run(
         _update_msg_subtitle(msg, subtitle)
 
     def _folder_mark_done(fid: str):
-        """Incrementa done para la carpeta asociada a fid y actualiza el subtítulo."""
         key = fileid_to_folder_rx.get(fid)
         if not key:
             return
@@ -335,12 +329,10 @@ def run(
         fid = ev.get("file_id")
         if fid in fileid_to_folder_rx:
             _folder_mark_done(fid)
-            # limpieza por fid
             progress_index_rx.pop(fid, None)
             last_tick_rx.pop(fid, None)
             return
 
-        # Archivo suelto
         msg = _resolve_msg_for_event_rx(ev)
         if msg:
             _update_msg_subtitle(msg, "Recibido")
@@ -349,7 +341,6 @@ def run(
             last_tick_rx.pop(fid, None)
 
     def on_file_rx_done(ev: dict):
-        # alias de finished
         on_file_rx_finished(ev)
 
     def on_file_rx_error(ev: dict):
@@ -402,13 +393,16 @@ def run(
                 manager.process_events(e)
                 picker.process_event(e)
 
-                # Sidebar: selección de contacto
+                # Sidebar: selección de contacto o "__ALL__"
                 try:
                     w, h = screen.get_size()
                     L = compute_layout(w, h)
                     maybe_mac = sidebar.handle_event(e, L, roster.contacts)
                     if maybe_mac:
-                        roster.select(maybe_mac)
+                        if maybe_mac == "__ALL__":
+                            roster.selected_mac = "__ALL__"
+                        else:
+                            roster.select(maybe_mac)
                 except TypeError:
                     pass
 
@@ -421,12 +415,28 @@ def run(
                 kind, payload = res
 
                 if kind == "attach":
-                    picker.open()
+                    if roster.selected_mac != "__ALL__":  
+                        picker.open()
+                    continue
 
                 elif kind == "send" and roster.selected_mac:
                     text_to_send = (payload.get("text") or "").strip()
                     files_to_send = payload.get("files") or []
 
+                    # --- MODO BROADCAST (solo mensajes) ---
+                    if roster.selected_mac == "__ALL__":
+                        if text_to_send:
+                            try:
+                                # usa ChatService → IPC por dentro (send_cmd)
+                                chat.send_text_all(text_to_send, echo=True)
+                            except Exception as ex:
+                                chat.messages_by_mac.setdefault("__ALL__", []).append(
+                                    ChatMessage(text=f"[error broadcast] {ex}", time=now_hhmm(), side="tx")
+                                )
+                        # Ignorar adjuntos en broadcast
+                        continue
+
+                    # --- MODO 1-a-1 (como ya lo tenías) ---
                     if text_to_send:
                         chat.send_text(roster.selected_mac, text_to_send)
 
@@ -466,7 +476,6 @@ def run(
 
         # RX: evita cerrar anticipadamente tarjetas de carpeta
         for fid, msg in list(progress_index_rx.items()):
-            # NUEVO: si este file_id pertenece a una carpeta, omitimos el watchdog
             if fid in fileid_to_folder_rx:
                 continue
             ts = last_tick_rx.get(fid)
@@ -484,9 +493,13 @@ def run(
         sidebar_rows = _build_sidebar_rows(roster.contacts, chat.messages_by_mac)
         sidebar.draw(screen, L, sidebar_rows)
 
+        # Header: muestra "Todos" cuando es broadcast
         current_name = "Camilo"
         current_online = False
-        if roster.selected_mac:
+        if roster.selected_mac == "__ALL__":
+            current_name = "Todos"
+            current_online = False
+        elif roster.selected_mac:
             for c in roster.contacts:
                 if c.mac == roster.selected_mac:
                     current_name = c.name
@@ -494,6 +507,7 @@ def run(
                     break
         header.draw(screen, L, current_name, current_online)
 
+        # Hilo actual (permite "__ALL__" si quieres reflejar mensajes de broadcast)
         current_msgs = chat.messages_by_mac.get(roster.selected_mac or "", [])
         messages.draw(screen, L, [m.__dict__ for m in current_msgs])
 
@@ -504,7 +518,8 @@ def run(
 
         new_files = picker.take_attachments()
         if new_files:
-            composer.add_files(new_files)
+            if roster.selected_mac != "__ALL__":
+                composer.add_files(new_files)
 
         manager.draw_ui(screen)
         pg.display.flip()

@@ -55,7 +55,7 @@ class AppServer:
     """
     Orquestador backend:
       - Levanta raw socket, threads, discovery, messaging, seguridad, IPC UDS.
-      - Expone comandos por IPC (send_text, file_send, folder_send...).
+      - Expone comandos por IPC (send_text, send_text_all, file_send, folder_send...).
       - Publica eventos a la UI: chat, vecinos y file_tx_* / file_rx_*.
     """
     def __init__(
@@ -129,6 +129,7 @@ class AppServer:
             if t in ("echo",):
                 return {"echo": cmd.get("text", "")}
 
+            # ---------- Envío 1-a-1 ----------
             if t in ("send_text", "send_message"):
                 dst = cmd.get("dst") or cmd.get("dst_mac")
                 body = cmd.get("body") if "body" in cmd else cmd.get("text", "")
@@ -137,9 +138,48 @@ class AppServer:
                 self.messaging.send_to_mac(dst, body.encode("utf-8"))
                 return {"ok": True}
 
+            # ---------- Broadcast SOLO TEXTO ----------
+            if t in ("send_text_all", "broadcast_text"):
+                body = cmd.get("body") if "body" in cmd else cmd.get("text", "")
+                if not isinstance(body, str):
+                    return {"ok": False, "error": "body debe ser str"}
+                body = body.strip()
+                if not body:
+                    return {"ok": False, "error": "mensaje vacío"}
+
+                # Ventana de actividad opcional (segundos)
+                active_since = cmd.get("active_since")
+                if isinstance(active_since, (int, float)) and active_since >= 0:
+                    window = float(active_since)
+                else:
+                    # por defecto, vecinos vistos en los últimos 60s (coincide con tu Messaging)
+                    window = 60.0
+
+                # Snapshot y filtro de vecinos elegibles
+                neighbors = getattr(self.discovery, "neighbors", {}) or {}
+                now = time.time()
+                targets = [
+                    mac for mac, meta in list(neighbors.items())
+                    if (now - (meta or {}).get("last_seen", 0)) <= window
+                ]
+
+                # Envía usando la API ya existente
+                if hasattr(self.messaging, "send_to_macs"):
+                    self.messaging.send_to_macs(targets, body.encode("utf-8"))
+                else:
+                    # Fallback a broadcast genérico si existiese
+                    if hasattr(self.messaging, "send_to_all_neighbors"):
+                        self.messaging.send_to_all_neighbors(body.encode("utf-8"), only_active_since=window)
+                    else:
+                        return {"ok": False, "error": "Messaging no expone send_to_macs ni send_to_all_neighbors"}
+
+                return {"ok": True, "sent": len(targets)}
+
+            # ---------- Vecinos ----------
             if t in ("roster_get", "neighbors_get"):
                 return _neighbors_snapshot(self.discovery.neighbors)
 
+            # ---------- Envío de archivo ----------
             if t == "file_send":
                 # {"type":"file_send","dst":"aa:bb:...","path":"/abs/file"}
                 dst = cmd.get("dst") or cmd.get("dst_mac")
@@ -160,6 +200,7 @@ class AppServer:
                 self._ensure_file_poller()
                 return {"ok": True, "file_id": file_id}
 
+            # ---------- Envío de carpeta ----------
             if t == "folder_send":
                 dst = cmd.get("dst") or cmd.get("dst_mac")
                 folder = cmd.get("folder") or cmd.get("path")
