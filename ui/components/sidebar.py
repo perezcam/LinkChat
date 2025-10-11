@@ -9,6 +9,7 @@ class Sidebar:
         self.selected = 0
         self.scroll = 0
 
+        # Icono marca (enredate.svg)
         self._icon_brand = None
         p_brand = os.path.join(images_dir, "enredate.svg")
         try:
@@ -18,6 +19,7 @@ class Sidebar:
             pg.draw.rect(surf, CLR.get("accent", (120, 120, 120)), surf.get_rect(), border_radius=6)
             self._icon_brand = surf
 
+        # Icono "todos" (all.svg) para el botón
         self._icon_all = None
         p_all = os.path.join(images_dir, "all.svg")
         try:
@@ -26,6 +28,15 @@ class Sidebar:
             surf = pg.Surface((24, 24), pg.SRCALPHA)
             pg.draw.circle(surf, CLR.get("accent", (120, 120, 120)), (12, 12), 10)
             self._icon_all = surf
+
+        # <<< NUEVO: Icono de usuario para el avatar (user.svg) >>>
+        self._icon_user = None
+        p_user = os.path.join(images_dir, "user.svg")
+        try:
+            self._icon_user = pg.image.load(p_user).convert_alpha()
+        except Exception:
+            # Si no existe, dejamos None y se verá solo el círculo
+            self._icon_user = None
 
     # ----------------- Helpers internos -----------------
     def _item_h(self, L) -> int:
@@ -139,17 +150,15 @@ class Sidebar:
         icon_h = max(18, int(f["h2"].get_linesize() * 0.9))
         icon_w = icon_h
 
-        # texto "EnRedate"
         text_pos = (r.x + pad, title_y)
         text(surf, "EnRedate", f["h2"], CLR["text"], text_pos)
 
-        # medir ancho del texto para colocar icono de marca a la derecha
         text_w = f["h2"].size("EnRedate")[0] if hasattr(f["h2"], "size") else 0
         if self._icon_brand:
             brand_icon = pg.transform.smoothscale(self._icon_brand, (icon_w, icon_h))
             surf.blit(brand_icon, (r.x + pad + text_w + 8, title_y))
 
-        # Buscador (estático por ahora)
+        # Buscador
         search_r = self._search_rect(L)
         rounded_rect(surf, search_r, CLR["accent"], L["r_sm"])
         text(surf, "Buscar contactos...", f["p"], CLR["muted"],
@@ -171,8 +180,15 @@ class Sidebar:
 
             divider(surf, row.x+pad, row.bottom-1, row.right-pad)
 
-            av_r = pg.Rect(row.x+pad, row.y+pad, int(42*L["s"]), int(42*L["s"]))
+            # Avatar circular + icono user.svg dentro
+            av_r = pg.Rect(r.x+pad, row.y+pad, int(42*L["s"]), int(42*L["s"]))
             pg.draw.circle(surf, CLR["accent"], av_r.center, av_r.w//2)
+
+            if self._icon_user:
+                icon_size = int(av_r.w * 0.75)
+                icon = pg.transform.smoothscale(self._icon_user, (icon_size, icon_size))
+                icon_pos = (av_r.centerx - icon_size//2, av_r.centery - icon_size//2)
+                surf.blit(icon, icon_pos)
 
             if self._get(c, "online", False):
                 dot(surf, (av_r.right-4, av_r.bottom-4), max(4, int(6*L["s"])), CLR["online"])
@@ -189,18 +205,16 @@ class Sidebar:
 
         surf.set_clip(list_clip_prev)
 
-        # Botón inferior —> Enviar a todos (solo mensajes) con icono all.svg A LA IZQUIERDA DEL TEXTO
+        # Botón inferior —> Enviar a todos
         btn_h = int(50 * L["s"])
         btn = pg.Rect(r.x+pad, r.bottom-pad-btn_h, r.w-2*pad, btn_h)
 
-        # Fondo más oscuro para mayor contraste
         base_primary = CLR.get("primary", (40, 105, 255))
-        btn_bg = CLR.get("primary_dark", self._darken(base_primary, 0.6))  # más oscuro que antes
+        btn_bg = CLR.get("primary_dark", self._darken(base_primary, 0.8))  # un poco más claro
         btn_fg = CLR.get("on_primary", (255, 255, 255))
 
         rounded_rect(surf, btn, btn_bg, L["r_sm"])
 
-        # Componer icono+texto centrados como conjunto
         label = "Enviar a todos"
         font_btn = f["btn"]
         text_w = font_btn.size(label)[0] if hasattr(font_btn, "size") else 0
@@ -213,10 +227,8 @@ class Sidebar:
         text_x = start_x + icon_size + gap
         text_y = btn.centery
 
-        # Icono all.svg
         if self._icon_all:
             icon_scaled = pg.transform.smoothscale(self._icon_all, (icon_size, icon_size))
             surf.blit(icon_scaled, (start_x, icon_y))
 
-        # Texto
         text(surf, label, font_btn, btn_fg, (text_x, text_y), "midleft")
