@@ -7,8 +7,8 @@ class MessagesView:
     def __init__(self, images_dir="images"):
         self.wrap_cache = {}
         self.images_dir = images_dir
-        self._icons = {"file": None}            
-        self._icon_scaled_cache = {}           
+        self._icons = {"file": None}
+        self._icon_scaled_cache = {}
 
     def _load_icons(self):
         def load(name: str) -> pg.Surface:
@@ -32,28 +32,73 @@ class MessagesView:
         self._icon_scaled_cache[key] = scaled
         return scaled
 
-    #  helpers de texto 
-    def _wrap(self, font, body, maxw):
+    # ----------------------------
+    # helpers de texto 
+    # ----------------------------
+    def _wrap(self, font, body: str, maxw: int):
+        """
+        Envuelve por palabras respetando saltos de línea (\n).
+        Si una 'palabra' es más ancha que maxw (URLs, hashes), la parte en segmentos
+        que quepan por ancho. Cachea por (font, body, maxw).
+        """
         key = (id(font), body, maxw)
         cached = self.wrap_cache.get(key)
         if cached:
             return cached
-        words = body.split(" ")
-        lines, cur = [], ""
-        for w in words:
-            test = (cur + " " + w).strip()
-            if font.size(test)[0] <= maxw:
-                cur = test
-            else:
-                if cur:
-                    lines.append(cur)
-                cur = w
-        if cur:
-            lines.append(cur)
-        self.wrap_cache[key] = lines
-        return lines
 
-    #  tarjeta de archivo 
+        if not body:
+            self.wrap_cache[key] = [""]
+            return [""]
+
+        out_lines = []
+
+        for para in body.split("\n"):
+            # Párrafo vacío
+            if para == "":
+                out_lines.append("")
+                continue
+
+            words = para.split(" ")
+            cur = ""
+
+            for w in words:
+              
+                test = (cur + " " + w).strip() if cur else w
+                if font.size(test)[0] <= maxw:
+                    cur = test
+                    continue
+
+                if cur:
+                    out_lines.append(cur)
+                    cur = ""
+
+                if font.size(w)[0] > maxw:
+                    i = 0
+                    n = len(w)
+                    while i < n:
+                        lo, hi = 1, n - i
+                        best = 1
+                        while lo <= hi:
+                            mid = (lo + hi) // 2
+                            if font.size(w[i:i+mid])[0] <= maxw:
+                                best = mid
+                                lo = mid + 1
+                            else:
+                                hi = mid - 1
+                        out_lines.append(w[i:i+best])
+                        i += best
+                else:
+                    cur = w
+
+            if cur:
+                out_lines.append(cur)
+
+        self.wrap_cache[key] = out_lines
+        return out_lines
+
+    # ----------------------------
+    # tarjeta de archivo
+    # ----------------------------
     def _draw_file_card(self, surf, L, m, x_left, x_right, y):
         f = L["fonts"]; s = L["s"]
         is_tx = (m.get("side") == "tx")
@@ -91,7 +136,9 @@ class MessagesView:
 
         return br.bottom + int(16 * s)
 
-    #  render general 
+    # ----------------------------
+    # render general
+    # ----------------------------
     def draw(self, surf, L, messages):
         r = L["messages"]; pad = L["pad"]; f = L["fonts"]
         x_left  = r.x + pad * 2
@@ -99,23 +146,26 @@ class MessagesView:
         y = r.y + pad
 
         for m in messages:
-            # Tarjeta de archivo con icono real
             if m.get("file"):
                 y = self._draw_file_card(surf, L, m, x_left, x_right, y)
                 continue
 
-            # Mensaje 
             is_tx = (m.get("side") == "tx")
-            body = m.get("text", "")
+            body = m.get("text", "") or ""
             font = f["p"]
-            maxw = min(L["bubble_max"], r.w * 0.48)
+
+            # ampliar ancho efectivo para favorecer el wrap vertical
+            maxw = int(min(L["bubble_max"], r.w * 0.7))
+
             lines = self._wrap(font, body, maxw)
-            text_w = max(font.size(line)[0] for line in lines) if lines else 0
+            # ancho real del texto para ajustar burbuja
+            text_w = max((font.size(line)[0] for line in lines), default=0)
 
             pad_bub = int(12 * L["s"])
-            text_h = (len(lines) * font.get_linesize()) if lines else font.get_linesize()
+            line_h = font.get_linesize()
+            text_h = max(line_h, len(lines) * line_h)
 
-            # ancho mínimo 
+            # ancho mínimo
             min_chars = 6
             min_text_w = font.size("M" * min_chars)[0]
             min_bw = int(min_text_w + pad_bub * 2)
@@ -126,6 +176,7 @@ class MessagesView:
             # respetar máximo y mínimo
             bw = max(min_bw, min(bw_auto, int(maxw)))
 
+            # alto por contenido (burbuja crece hacia abajo)
             bh = int(text_h + pad_bub * 2)
             bx = (x_right - bw) if is_tx else x_left
 
@@ -138,7 +189,7 @@ class MessagesView:
             ty = br.y + pad_bub
             for line in lines:
                 text(surf, line, font, fg, (br.x + pad_bub, ty))
-                ty += font.get_linesize()
+                ty += line_h
 
             ts_color = (fg if is_tx else (113, 113, 130))
             text(surf, m.get("time", ""), f["xs"], ts_color, (br.x + pad_bub, br.bottom - pad_bub))

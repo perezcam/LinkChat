@@ -14,7 +14,7 @@ class Messaging:
         self._on_message: Optional[Callable[[FrameSchema, str, bytes], None]] = None
         self._attached = False
 
-    # --- ciclo de vida ---
+    #  ciclo de vida 
     def attach(self):
         if self._attached:
             return
@@ -28,7 +28,7 @@ class Messaging:
         self.threads.remove_message_handler(MessageType.APP_MESSAGE)
         self._attached = False
 
-    # --- envío ---
+    #  envío 
     def send_to_mac(self, dst_mac: str, payload: bytes):
         self._seq = (self._seq + 1) & 0xFFFF
         frame = FrameSchema(
@@ -61,7 +61,7 @@ class Messaging:
                     continue
             self.send_to_mac(mac, payload)
 
-    # --- recepción ---
+    #  recepción 
     def on_message(self, cb: Callable[[FrameSchema, str, bytes], None]):
         self._on_message = cb
 
