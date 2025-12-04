@@ -3,7 +3,6 @@ volumes:
 
 networks:
   l2lab:
-    driver: bridge
 
 services:
   l2-a:
@@ -123,10 +122,6 @@ services:
     restart: unless-stopped    
     networks:
       - l2lab
-
-  # =========================
-  #   NUEVO NODO: ALAN TURING
-  # =========================
 
   l2-turing:
     build:

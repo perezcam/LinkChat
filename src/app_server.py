@@ -20,7 +20,6 @@ from src.file_transfer.file_receiver import FileReceiver
 from src.security.security_handler import SecurityHandler
 from src.security.security_manager import SecurityManager
 
-# <<< NUEVO: bus de eventos RX para la UI >>>
 from src.file_transfer.handlers.ui_events import set_sinks
 
 try:
@@ -110,7 +109,7 @@ class AppServer:
 
         self.security: SecurityManager | None = None
 
-    # ------------- IPC glue -------------
+    #  IPC glue 
     def _emit_event(self, ev: Dict[str, Any]):
         if not (self.ipc and self._ipc_loop):
             logging.warning("[AppServer] _emit_event() omitido: IPC no inicializado")
@@ -129,7 +128,7 @@ class AppServer:
             if t in ("echo",):
                 return {"echo": cmd.get("text", "")}
 
-            # ---------- Envío 1-a-1 ----------
+            #  Envío 1-a-1 
             if t in ("send_text", "send_message"):
                 dst = cmd.get("dst") or cmd.get("dst_mac")
                 body = cmd.get("body") if "body" in cmd else cmd.get("text", "")
@@ -138,7 +137,7 @@ class AppServer:
                 self.messaging.send_to_mac(dst, body.encode("utf-8"))
                 return {"ok": True}
 
-            # ---------- Broadcast SOLO TEXTO ----------
+            #  Broadcast 
             if t in ("send_text_all", "broadcast_text"):
                 body = cmd.get("body") if "body" in cmd else cmd.get("text", "")
                 if not isinstance(body, str):
@@ -152,7 +151,7 @@ class AppServer:
                 if isinstance(active_since, (int, float)) and active_since >= 0:
                     window = float(active_since)
                 else:
-                    # por defecto, vecinos vistos en los últimos 60s (coincide con tu Messaging)
+                    # por defecto, vecinos vistos en los últimos 60s 
                     window = 60.0
 
                 # Snapshot y filtro de vecinos elegibles
@@ -175,11 +174,11 @@ class AppServer:
 
                 return {"ok": True, "sent": len(targets)}
 
-            # ---------- Vecinos ----------
+            #  Vecinos 
             if t in ("roster_get", "neighbors_get"):
                 return _neighbors_snapshot(self.discovery.neighbors)
 
-            # ---------- Envío de archivo ----------
+            #  Envío de archivo 
             if t == "file_send":
                 # {"type":"file_send","dst":"aa:bb:...","path":"/abs/file"}
                 dst = cmd.get("dst") or cmd.get("dst_mac")
@@ -200,7 +199,7 @@ class AppServer:
                 self._ensure_file_poller()
                 return {"ok": True, "file_id": file_id}
 
-            # ---------- Envío de carpeta ----------
+            #  Envío de carpeta 
             if t == "folder_send":
                 dst = cmd.get("dst") or cmd.get("dst_mac")
                 folder = cmd.get("folder") or cmd.get("path")
@@ -270,7 +269,7 @@ class AppServer:
         self._ipc_thread.start()
         logging.info(f"[IPC] UDS escuchando en {self.socket_path}")
 
-    # ------------- Backend → UI (eventos) -------------
+    #  Backend → UI (eventos) 
     def _on_neighbors_changed(self, _rows_dict):
         self._emit_event(_neighbors_snapshot(self.discovery.neighbors))
 
@@ -330,7 +329,6 @@ class AppServer:
                 "error": ev.get("error") or "error",
             })
 
-        # <<< NUEVO: registro de sinks globales >>>
         set_sinks(
             on_started=on_started,
             on_progress=on_progress,
@@ -379,7 +377,7 @@ class AppServer:
             finally:
                 time.sleep(0.2)
 
-    # ------------- Lifecycle -------------
+    #  Lifecycle 
     def run_forever(self):
         log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
         logging.basicConfig(
@@ -402,7 +400,7 @@ class AppServer:
 
                 self.file_transfer = FileTransferHandler(sock.mac)
 
-                # --- Seguridad (PSK) ---
+                #  Seguridad (PSK) 
                 try:
                     psk_env = os.environ.get("PSK")
                     if not psk_env:
@@ -433,7 +431,7 @@ class AppServer:
                 )
                 self.th_mgr.start()
 
-                # RX de archivos (con callbacks a IPC por set_sinks)
+                # RX de archivos
                 os.makedirs(DEFAULT_BASE_DIR, exist_ok=True)
                 self.file_receiver = FileReceiver(self.th_mgr, DEFAULT_BASE_DIR)
                 self._register_file_rx_callbacks()
