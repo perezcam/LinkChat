@@ -196,7 +196,7 @@ class FileService:
 
     #  Ofertas - aceptación 
     def on_file_offer(self, evt: dict):
-        """Auto-aceptación opcional (si tu backend lo requiere)."""
+        """Auto-aceptación opcional ."""
         offer_id = evt.get("id") or evt.get("file_id")
         auto_accept = os.environ.get("FILE_AUTO_ACCEPT", "1") == "1"
         if auto_accept and offer_id:

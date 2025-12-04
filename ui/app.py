@@ -464,8 +464,7 @@ def run(
 
         #  WATCHDOGS 
         now = time.time()
-        #para evitar problemas en archivos pequennos
-        # TX: marca Enviado si no hay progreso hace ε seg.
+        # TX: marca Enviado si no hay progreso hace e seg.
         for fid, msg in list(progress_index_tx.items()):
             ts = last_tick_tx.get(fid)
             if ts is not None and (now - ts) > EPSILON_SECS:

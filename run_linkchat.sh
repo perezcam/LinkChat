@@ -5,11 +5,6 @@ set -euo pipefail
 # Lanza un par backend+UI con servicios NUEVOS nombrados por ALIAS,
 # sin modificar docker-compose.yml. Perfecto para N laptops (cada una
 # con su ALIAS) conectadas a un hotspot.
-#
-# Uso:
-#   ./run_linkchat_alias.sh           # usa .env por defecto
-#   ./run_linkchat_alias.sh .env.nodo
-# -----------------------------------------------------------
 
 ENVFILE="${1:-.env}"
 [[ -f "$ENVFILE" ]] || { echo "ERROR: no existe $ENVFILE"; exit 1; }
@@ -26,9 +21,8 @@ set +a
 : "${ETHER_TYPE:=0x88B5}"
 : "${CHUNK_SIZE:=900}"
 : "${LOG_LEVEL:=INFO}"
-: "${XAUTH_HOST:=/home/$USER/.Xauthority}"   # ajusta si tu Xauthority está en otro sitio
+: "${XAUTH_HOST:=/home/$USER/.Xauthority}"   
 
-# Detecta interfaz Wi-Fi si no la especificaste
 if [[ -z "${WIFI_IFACE:-}" || "$WIFI_IFACE" == "auto" ]]; then
   WIFI_IFACE="$(ip -o link | awk -F': ' '/wl|wlan/{print $2; exit}')"
 fi
@@ -37,7 +31,6 @@ if [[ -z "${WIFI_IFACE:-}" ]]; then
   WIFI_IFACE="wlan0"
 fi
 
-# Nombres de servicios derivados del ALIAS (sin espacios/caracteres raros)
 safe_alias="$(echo "$ALIAS" | tr '[:upper:] ' '[:lower:]-' | tr -cd '[:alnum:]-')"
 SVC_BACK="l2-${safe_alias}"
 SVC_UI="ui-${safe_alias}"
@@ -45,7 +38,6 @@ SVC_UI="ui-${safe_alias}"
 echo "[launcher] ENV=$ENVFILE  ALIAS=$ALIAS  WIFI_IFACE=$WIFI_IFACE"
 echo "[launcher] Servicios -> $SVC_BACK + $SVC_UI"
 
-# Asegura carpeta compartida
 mkdir -p ./shared
 
 # Genera override temporal con servicios NUEVOS
@@ -69,6 +61,7 @@ services:
       CHUNK_SIZE: ${CHUNK_SIZE}
       LOG_LEVEL: ${LOG_LEVEL}
       PYTHONUNBUFFERED: "1"
+      PSK: ${PSK}
     volumes:
       - "./ipc:/ipc"
       - ".:/app"
@@ -92,6 +85,7 @@ services:
       PYTHONUNBUFFERED: "1"
       BASE_DIR: ${BASE_DIR}
       LOG_LEVEL: ${LOG_LEVEL}
+      PSK: ${PSK}
     volumes:
       - "/tmp/.X11-unix:/tmp/.X11-unix:ro"
       - "${XAUTH_HOST}:/root/.Xauthority:ro"

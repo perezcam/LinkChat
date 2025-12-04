@@ -4,7 +4,7 @@ from src.core.managers.service_threads import ThreadManager
 from src.core.schemas.frame_schemas import FrameSchema, HeaderSchema
 from src.core.schemas.scheduled_task import ScheduledTask
 from src.core.enums.enums import MessageType
-from src.prepare.network_config import get_ether_type, get_runtime_config
+from src.prepare.network_config import get_ether_type
 
 
 class Discovery:
@@ -25,7 +25,7 @@ class Discovery:
 
         self._seq: int = 0
 
-    # -------------- Registro en ThreadManager --------------
+    #  Registro en ThreadManager 
     def attach(self):
         """
         Registra los handlers y agenda la tarea periódica de discover.
@@ -50,11 +50,11 @@ class Discovery:
         self.service_threads.remove_scheduled_task(self._timer_cb_discover)
         
   
-    # -------------- API externa --------------
+    #  API externa 
     def set_on_neighbors_changed(self, cb: Callable[[Dict[str, Dict[str, Any]]], None]):
         self.on_neighbors_changed = cb
 
-    # -------------- Timer: enviar discover --------------
+    #  Timer: enviar discover 
     def _timer_cb_discover(self):
         """Envía DISCOVER_REQUEST por broadcast con el alias local."""
         self._seq = (self._seq + 1) & 0xFFFF
@@ -75,7 +75,7 @@ class Discovery:
 
         self.service_threads.queue_frame_for_sending(frame)
 
-    # -------------- Handlers de recepción --------------
+    #  Handlers de recepción 
     def _on_discover_request(self, frame: FrameSchema):
         """
         Responde unicast con DISCOVER_REPLY cuando otro nodo hace DISCOVER_REQUEST.
@@ -117,7 +117,6 @@ class Discovery:
             entry["last_seen"] = now
         else:
             self.neighbors[mac_vecino] = {"alias": alias, "last_seen": now}
-            # print(f"[neighbors] {mac_vecino} -> alias='{alias}'")
 
         if self.on_neighbors_changed:
             try:
@@ -126,7 +125,7 @@ class Discovery:
                 
                 print(f"[neighbors cb] error: {e}")
 
-    # -------------- Utilidades --------------
+    #  Utilidades 
     @staticmethod
     def _parse_alias(payload: str) -> str:
         # payload formato: "alias=Nombre Con Espacios"
